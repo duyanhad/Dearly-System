@@ -1,0 +1,20 @@
+# Bí mật & môi trường
+.env
+.env.local
+
+# .NET build output
+bin/
+obj/
+*.user
+TestResults/
+# Ảnh người dùng tải lên (PII)
+src/DrinkWater.Api/wwwroot/uploads/*
+!src/DrinkWater.Api/wwwroot/uploads/.gitkeep
+
+# Log chạy máy cục bộ
+logs/
+*.log
+
+# APK test (build artifact, tải từ máy build)
+src/DrinkWater.Api/wwwroot/downloads/*
+!src/DrinkWater.Api/wwwroot/downloads/.gitkeep
