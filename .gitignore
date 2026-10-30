@@ -18,3 +18,6 @@ logs/
 # APK test (build artifact, tải từ máy build)
 src/DrinkWater.Api/wwwroot/downloads/*
 !src/DrinkWater.Api/wwwroot/downloads/.gitkeep
+
+# Env riêng cho Render (chứa secret, không đẩy lên git)
+render.env
