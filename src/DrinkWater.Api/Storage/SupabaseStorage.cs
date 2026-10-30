@@ -25,6 +25,7 @@ public sealed class SupabaseStorage(
             Content = new StreamContent(content)
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _key);
+        req.Headers.TryAddWithoutValidation("apikey", _key);
         req.Headers.TryAddWithoutValidation("x-upsert", "true");
         req.Content.Headers.ContentType = new MediaTypeHeaderValue(Mime(extension));
 
