@@ -29,7 +29,10 @@ builder.Services.AddScoped<WaterService>();
 builder.Services.AddScoped<RewardService>();
 builder.Services.AddScoped<SocialService>();
 builder.Services.AddScoped<SystemLogWriter>();
-builder.Services.AddScoped<IImageStorage, LocalDiskStorage>();
+if (string.Equals(builder.Configuration["Storage:Provider"], "Supabase", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddHttpClient<IImageStorage, SupabaseStorage>();
+else
+    builder.Services.AddScoped<IImageStorage, LocalDiskStorage>();
 builder.Services.AddSingleton<IPushSender, LogPushSender>();
 builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection("WebPush"));
 builder.Services.AddScoped<IWebPushSender, WebPushSender>();
