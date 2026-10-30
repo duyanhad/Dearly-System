@@ -143,7 +143,8 @@ builder.Services.AddCors(o => o.AddPolicy("spa", p =>
     p.SetIsOriginAllowed(origin =>
             allowed.Contains(origin)
             || origin.StartsWith("http://192.168.", StringComparison.Ordinal)
-            || origin.EndsWith(".trycloudflare.com", StringComparison.Ordinal))
+            || origin.EndsWith(".trycloudflare.com", StringComparison.Ordinal)
+            || origin.EndsWith(".vercel.app", StringComparison.Ordinal))
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials();
@@ -157,8 +158,10 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    await MigrateOnStartAsync(app);
 }
+
+// Migration chạy ở MỌI môi trường để host (Render/VPS) tự dựng schema lần đầu.
+await MigrateOnStartAsync(app);
 
 // Ảnh upload + file tải về (APK) nằm trong wwwroot. .apk không có trong bảng MIME mặc định
 // nên phải khai báo, nếu không sẽ trả 404.
