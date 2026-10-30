@@ -100,7 +100,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<Message>(e =>
         {
+            // Tin nhắn thoại không có chữ → Body rỗng hợp lệ.
             e.Property(x => x.Body).HasMaxLength(500).IsRequired();
+            e.Property(x => x.AudioUrl).HasMaxLength(500);
             e.HasIndex(x => new { x.SenderId, x.ReceiverId, x.CreatedAt });
             e.HasIndex(x => new { x.ReceiverId, x.ReadAt });
         });

@@ -4,6 +4,7 @@ using DrinkWater.Api.Dtos;
 using DrinkWater.Api.Entities;
 using DrinkWater.Api.Hubs;
 using DrinkWater.Api.Services;
+using DrinkWater.Api.Storage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -19,7 +20,8 @@ public class ChatController(
     AppDbContext db,
     IClock clock,
     IHubContext<NotificationHub> hub,
-    IWebPushSender webPush) : ControllerBase
+    IWebPushSender webPush,
+    IImageStorage storage) : ControllerBase
 {
     private const int MaxBodyLength = 500;
 
@@ -107,9 +109,77 @@ public class ChatController(
 
         messages.Reverse();
         return messages
-            .Select(m => new MessageDto(m.Id, m.SenderId == me, m.Body, m.CreatedAt, m.ReadAt))
+            .Select(m => new MessageDto(m.Id, m.SenderId == me, m.Body, m.CreatedAt, m.ReadAt,
+                m.AudioUrl, m.AudioDurationMs))
             .ToList();
     }
+
+    /// <summary>Gửi tin nhắn thoại (ghi âm trên máy) tới một người bạn.</summary>
+    [HttpPost("{userId:guid}/voice")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 8 * 1024 * 1024)]
+    public async Task<ActionResult<MessageDto>> SendVoice(
+        Guid userId, IFormFile audio, [FromForm] int durationMs, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        if (userId == me) return Problem(statusCode: 400, title: "Không thể tự nhắn chính mình");
+        if (!await AreFriendsAsync(me, userId, ct))
+            return Problem(statusCode: 403, title: "Chỉ chat được với bạn bè");
+        if (audio is null || audio.Length == 0) return Problem(statusCode: 400, title: "Thiếu file ghi âm");
+        if (audio.Length > MaxVoiceBytes) return Problem(statusCode: 400, title: "Ghi âm tối đa 5 MB");
+
+        var extension = VoiceExtension(audio.ContentType);
+        if (extension is null) return Problem(statusCode: 400, title: "Định dạng ghi âm không hỗ trợ");
+
+        await using var stream = audio.OpenReadStream();
+        var url = await storage.SaveAsync(stream, extension, ct);
+
+        var message = new Message
+        {
+            SenderId = me,
+            ReceiverId = userId,
+            Body = string.Empty,
+            AudioUrl = url,
+            AudioDurationMs = Math.Clamp(durationMs, 0, 120_000)
+        };
+        db.Messages.Add(message);
+        await db.SaveChangesAsync(ct);
+
+        var sender = await db.Users.AsNoTracking()
+            .Where(u => u.Id == me)
+            .Select(u => new { u.FullName, u.AvatarUrl })
+            .FirstAsync(ct);
+
+        await hub.Clients.User(userId.ToString()).SendAsync("ReceiveMessage", new
+        {
+            message.Id,
+            FromUserId = me,
+            FromName = sender.FullName,
+            sender.AvatarUrl,
+            message.Body,
+            message.AudioUrl,
+            message.AudioDurationMs,
+            message.CreatedAt
+        }, ct);
+
+        await webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới", "Đã gửi một tin nhắn thoại 🎤",
+            "normal", ct: ct);
+
+        return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null,
+            message.AudioUrl, message.AudioDurationMs);
+    }
+
+    private const long MaxVoiceBytes = 5 * 1024 * 1024;
+
+    /// <summary>Chỉ nhận định dạng ghi âm phổ biến của trình duyệt (iOS ghi mp4, Chrome ghi webm/ogg).</summary>
+    private static string? VoiceExtension(string? contentType) => contentType?.Split(';')[0].Trim().ToLowerInvariant() switch
+    {
+        "audio/mp4" or "audio/m4a" or "audio/x-m4a" => ".m4a",
+        "audio/webm" => ".webm",
+        "audio/ogg" => ".ogg",
+        "audio/mpeg" => ".mp3",
+        "audio/wav" or "audio/x-wav" => ".wav",
+        _ => null
+    };
 
     [HttpPost("{userId:guid}")]
     public async Task<ActionResult<MessageDto>> Send(Guid userId, SendMessageRequest req, CancellationToken ct)
@@ -190,4 +260,5 @@ public record ConversationDto(
     bool LastFromMe,
     int Unread);
 
-public record MessageDto(int Id, bool Mine, string Body, DateTime CreatedAt, DateTime? ReadAt);
+public record MessageDto(int Id, bool Mine, string Body, DateTime CreatedAt, DateTime? ReadAt,
+    string? AudioUrl = null, int? AudioDurationMs = null);

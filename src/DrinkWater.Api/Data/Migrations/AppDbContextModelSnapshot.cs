@@ -467,6 +467,13 @@ namespace DrinkWater.Api.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("AudioDurationMs")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("AudioUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Body")
                         .IsRequired()
                         .HasMaxLength(500)
