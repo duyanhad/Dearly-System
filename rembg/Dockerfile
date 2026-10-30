@@ -14,7 +14,8 @@ RUN apt-get update \
 RUN pip install --no-cache-dir "rembg[cli]" onnxruntime
 
 # Model nhỏ (u2netp ~4.7 MB) để vừa RAM 512 MB của gói free; tải sẵn lúc build.
-RUN python -c "from rembg import new_session; new_session('u2netp')"
+RUN mkdir -p /models \
+    && python -c "from rembg import new_session; new_session('u2netp')"
 
 EXPOSE 10000
 CMD ["sh", "-c", "rembg s --host 0.0.0.0 --port ${PORT:-10000}"]
