@@ -13,7 +13,8 @@ namespace DrinkWater.Api.Controllers;
 [Route("api/push")]
 public class PushController(
     AppDbContext db,
-    IOptions<WebPushOptions> options) : ControllerBase
+    IOptions<WebPushOptions> options,
+    IWebPushSender webPush) : ControllerBase
 {
     /// <summary>Khoá công khai VAPID để client đăng ký nhận thông báo.</summary>
     [HttpGet("key")]
@@ -61,6 +62,16 @@ public class PushController(
             .Where(s => s.Endpoint == req.Endpoint && s.UserId == User.GetUserId())
             .ExecuteDeleteAsync();
         return new { subscribed = false };
+    }
+
+    /// <summary>Gửi thử một thông báo tới các thiết bị của chính mình (kiểm chứng push đã hoạt động).</summary>
+    [HttpPost("test")]
+    [Authorize]
+    public async Task<ActionResult<object>> Test()
+    {
+        var sent = await webPush.SendToUserAsync(User.GetUserId(),
+            "Thử thông báo 💧", "Nếu bạn thấy dòng này cả khi đã tắt màn hình thì push đã chạy.", "normal", 9999);
+        return new { sent };
     }
 }
 
