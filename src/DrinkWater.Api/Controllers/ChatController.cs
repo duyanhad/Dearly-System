@@ -18,7 +18,8 @@ namespace DrinkWater.Api.Controllers;
 public class ChatController(
     AppDbContext db,
     IClock clock,
-    IHubContext<NotificationHub> hub) : ControllerBase
+    IHubContext<NotificationHub> hub,
+    IWebPushSender webPush) : ControllerBase
 {
     private const int MaxBodyLength = 500;
 
@@ -146,6 +147,10 @@ public class ChatController(
             message.Body,
             message.CreatedAt
         }, ct);
+
+        // Web Push để người nhận thấy tin nhắn cả khi đã đóng app / tắt màn hình.
+        await webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới",
+            body.Length > 120 ? body[..120] + "…" : body, "normal", ct: ct);
 
         return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null);
     }
