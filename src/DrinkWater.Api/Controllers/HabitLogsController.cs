@@ -19,7 +19,8 @@ public record HabitLogDto(
     string? PhotoUrl,
     string Status,
     string? RejectReason,
-    int? Value);
+    int? Value,
+    string? MealSlot = null);
 
 public record HabitDayDto(string Kind, int Target, int Done, List<HabitLogDto> Logs);
 
@@ -61,9 +62,16 @@ public class HabitLogsController(
         if (target <= 0) target = kind switch { "medicine" => 3, "meal" => 3, "study" => 2, "weight" => 60000, _ => 3 };
 
         // Chỉ phiếu đã duyệt mới được cộng vào chỉ tiêu (phiếu chờ duyệt hiện riêng).
-        var done = logs.Count(l => l.Status == "approved");
+        // Bữa ăn: chỉ 3 bữa chính (sáng/trưa/tối) được tính, mỗi bữa tối đa 1 lần/ngày;
+        // bữa phụ / ăn vặt vẫn ghi nhận nhưng không cộng %.
+        var done = kind == "meal"
+            ? MealSlots.Count(slot => logs.Any(l => l.MealSlot == slot && l.Status == "approved"))
+            : logs.Count(l => l.Status == "approved");
         return new HabitDayDto(kind, target, done, logs.Select(ToDto).ToList());
     }
+
+    /// <summary>Ba bữa chính được tính % (bữa phụ/ăn vặt chỉ là ghi nhận).</summary>
+    private static readonly string[] MealSlots = ["breakfast", "lunch", "dinner"];
 
     /// <summary>Ghi một lần (multipart: time, note, photo?, value?) — value chỉ dùng cho cân nặng (gam).</summary>
     [HttpPost("{kind}/logs")]
@@ -74,6 +82,7 @@ public class HabitLogsController(
         [FromForm] string? note,
         [FromForm] int? value,
         [FromForm] DateOnly? date,
+        [FromForm] string? mealSlot,
         IFormFile? photo)
     {
         if (!HabitSetting.LogKinds.Contains(kind)) return Problem(statusCode: 400, title: "Nhu cầu không hợp lệ");
@@ -107,6 +116,7 @@ public class HabitLogsController(
             Status = needsReview ? "pending" : "approved",
             ReviewedAt = needsReview ? null : DateTime.UtcNow,
             Value = kind == "weight" ? value : null,
+            MealSlot = kind == "meal" ? NormalizeMealSlot(mealSlot) : null,
         };
         db.HabitLogs.Add(log);
 
@@ -213,7 +223,15 @@ public class HabitLogsController(
         l.PhotoUrl,
         l.Status,
         l.RejectReason,
-        l.Value);
+        l.Value,
+        l.MealSlot);
+
+    /// <summary>Chuẩn hoá loại bữa; giá trị lạ thì coi là bữa chính theo giờ (mặc định "lunch").</summary>
+    private static string NormalizeMealSlot(string? slot) => slot?.Trim().ToLowerInvariant() switch
+    {
+        "breakfast" or "lunch" or "dinner" or "snack" or "extra" => slot!.Trim().ToLowerInvariant(),
+        _ => "lunch"
+    };
 
     private static int ToMinutes(string hhmm)
     {

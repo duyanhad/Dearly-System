@@ -19,6 +19,9 @@ public class HabitLog
 
     public string? PhotoUrl { get; set; }
 
+    /// <summary>Bữa ăn: breakfast | lunch | dinner | snack | extra (rỗng với nhu cầu khác).</summary>
+    public string? MealSlot { get; set; }
+
     /// <summary>pending | approved | rejected.</summary>
     public string Status { get; set; } = "approved";
 
