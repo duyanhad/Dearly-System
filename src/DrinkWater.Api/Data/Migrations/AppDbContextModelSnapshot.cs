@@ -485,10 +485,16 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ImageUrl")
                         .HasColumnType("text");
 
                     b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RecalledAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("ReceiverId")

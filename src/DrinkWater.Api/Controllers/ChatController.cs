@@ -125,7 +125,7 @@ public class ChatController(
 
         return messages
             .Select(m => new MessageDto(m.Id, m.SenderId == me, m.Body, m.CreatedAt, m.ReadAt,
-                m.AudioUrl, m.AudioDurationMs, m.ImageUrl, ReactionsOf(m.Id)))
+                m.AudioUrl, m.AudioDurationMs, m.ImageUrl, ReactionsOf(m.Id), m.EditedAt, m.RecalledAt))
             .ToList();
     }
 
@@ -344,6 +344,69 @@ public class ChatController(
             .ExecuteDeleteAsync(ct);
         return new { deleted = removed };
     }
+
+    /// <summary>Sửa nội dung tin chữ của chính mình (đánh dấu "đã sửa").</summary>
+    [HttpPut("messages/{messageId:int}")]
+    public async Task<ActionResult<MessageDto>> EditMessage(int messageId, EditMessageRequest req, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == messageId, ct);
+        if (message is null) return NotFound();
+        if (message.SenderId != me) return Problem(statusCode: 403, title: "Chỉ sửa được tin của mình");
+        if (message.RecalledAt is not null) return Problem(statusCode: 400, title: "Tin đã thu hồi");
+
+        var body = (req.Body ?? string.Empty).Trim();
+        if (body.Length == 0) return Problem(statusCode: 400, title: "Tin nhắn trống");
+        if (body.Length > MaxBodyLength) return Problem(statusCode: 400, title: $"Tin nhắn tối đa {MaxBodyLength} ký tự");
+
+        message.Body = body;
+        message.EditedAt = clock.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        await hub.Clients.User(message.ReceiverId.ToString()).SendAsync("ReceiveMessageUpdate", new
+        {
+            message.Id,
+            message.Body,
+            message.EditedAt,
+            message.RecalledAt,
+            message.ImageUrl,
+            message.AudioUrl
+        }, ct);
+
+        return new MessageDto(message.Id, true, message.Body, message.CreatedAt, message.ReadAt,
+            message.AudioUrl, message.AudioDurationMs, message.ImageUrl, [], message.EditedAt, message.RecalledAt);
+    }
+
+    /// <summary>Thu hồi tin của chính mình: xoá nội dung/ảnh/ghi âm, giữ dòng "đã thu hồi".</summary>
+    [HttpDelete("messages/{messageId:int}")]
+    public async Task<ActionResult<MessageDto>> RecallMessage(int messageId, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == messageId, ct);
+        if (message is null) return NotFound();
+        if (message.SenderId != me) return Problem(statusCode: 403, title: "Chỉ thu hồi được tin của mình");
+        if (message.RecalledAt is not null) return Problem(statusCode: 400, title: "Tin đã thu hồi trước đó");
+
+        message.Body = string.Empty;
+        message.AudioUrl = null;
+        message.AudioDurationMs = null;
+        message.ImageUrl = null;
+        message.RecalledAt = clock.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        await hub.Clients.User(message.ReceiverId.ToString()).SendAsync("ReceiveMessageUpdate", new
+        {
+            message.Id,
+            message.Body,
+            message.EditedAt,
+            message.RecalledAt,
+            message.ImageUrl,
+            message.AudioUrl
+        }, ct);
+
+        return new MessageDto(message.Id, true, message.Body, message.CreatedAt, message.ReadAt,
+            message.AudioUrl, message.AudioDurationMs, message.ImageUrl, [], message.EditedAt, message.RecalledAt);
+    }
 }
 
 public record SendMessageRequest([MaxLength(500)] string Body);
@@ -359,7 +422,9 @@ public record ConversationDto(
 
 public record MessageDto(int Id, bool Mine, string Body, DateTime CreatedAt, DateTime? ReadAt,
     string? AudioUrl = null, int? AudioDurationMs = null, string? ImageUrl = null,
-    List<ReactionDto>? Reactions = null);
+    List<ReactionDto>? Reactions = null, DateTime? EditedAt = null, DateTime? RecalledAt = null);
+
+public record EditMessageRequest([MaxLength(500)] string Body);
 
 /// <summary>Một cảm xúc trên tin nhắn: emoji, số người thả và tôi đã thả chưa.</summary>
 public record ReactionDto(string Emoji, int Count, bool Mine);
