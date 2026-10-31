@@ -243,17 +243,30 @@ public class SocialController(
                 setting?.ImageUrl, setting?.CutoutUrl));
         }
 
-        // Giấc ngủ: mục tiêu là số phút ngủ của đêm nay.
+        // Giấc ngủ: mục tiêu là số phút ngủ trong ngày; cộng cả giấc đang chạy + chờ duyệt để partner
+        // thấy % tăng dần ngay trong lúc người kia đang ngủ.
         var sleepTarget = settings.FirstOrDefault(s => s.Kind == "sleep")?.TargetValue ?? 0;
         if (sleepTarget <= 0) sleepTarget = 480;
+        var userRow = await db.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.SleepDayStartAt })
+            .FirstOrDefaultAsync();
         var nights = await db.SleepLogs.AsNoTracking()
-            .Where(l => l.UserId == userId && l.Date == today)
+            .Where(l => l.UserId == userId && l.Date >= today.AddDays(-1))
             .ToListAsync();
-        var slept = nights.Where(l => l.Status == "approved").Sum(l => l.Minutes);
+        var running = nights.FirstOrDefault(l => l.Status == "sleeping");
+        var slept = nights
+            .Where(l => l.Status != "rejected")
+            .Where(l => userRow?.SleepDayStartAt is not { } boundary || l.CreatedAt >= boundary)
+            .Where(l => l.Date == today || DateOnly.FromDateTime((l.StartedAtUtc ?? l.CreatedAt).ToLocalTime()) == today)
+            .Sum(l => l.Status == "sleeping" && l.StartedAtUtc is { } started
+                ? Math.Max(0, (int)Math.Round((DateTime.UtcNow - started).TotalMinutes))
+                : l.Minutes);
         var sleepSetting = settings.FirstOrDefault(s => s.Kind == "sleep");
         needs.Add(new("sleep", sleepTarget, slept, PercentOf(slept, sleepTarget), 0,
             nights.Count(l => l.Status == "pending"),
-            sleepSetting?.ImageUrl, sleepSetting?.CutoutUrl));
+            sleepSetting?.ImageUrl, sleepSetting?.CutoutUrl,
+            running is not null));
 
         // Cân nặng: % tính từ mốc ban đầu → mục tiêu, giống trang cân nặng của họ.
         var weight = settings.FirstOrDefault(s => s.Kind == "weight");

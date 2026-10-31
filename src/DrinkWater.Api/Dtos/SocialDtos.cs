@@ -61,7 +61,9 @@ public record PartnerClientDto(
 /// <remarks>Target/Done theo đơn vị của nhu cầu: ml · số lần · phút ngủ · gam.</remarks>
 public record PartnerNeedDto(
     string Kind, int Target, int Done, int Percent, int Pending, int PendingCount,
-    string? ImageUrl = null, string? CutoutUrl = null);
+    string? ImageUrl = null, string? CutoutUrl = null,
+    /// <summary>Giấc ngủ: người này đang trong giấc (bộ đếm đang chạy).</summary>
+    bool Sleeping = false);
 
 /// <summary>Người duyệt ảnh của tôi (partner) + tiến độ hôm nay của họ.</summary>
 public record MyPartnerDto(
