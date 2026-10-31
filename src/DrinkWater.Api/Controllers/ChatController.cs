@@ -21,7 +21,8 @@ public class ChatController(
     IClock clock,
     IHubContext<NotificationHub> hub,
     IWebPushSender webPush,
-    IImageStorage storage) : ControllerBase
+    IImageStorage storage,
+    PresenceTracker presence) : ControllerBase
 {
     private const int MaxBodyLength = 500;
 
@@ -79,7 +80,8 @@ public class ChatController(
                     last?.Body,
                     last?.CreatedAt,
                     last is not null && last.SenderId == me,
-                    unread.GetValueOrDefault(u.Id));
+                    unread.GetValueOrDefault(u.Id),
+                    presence.IsOnline(u.Id));
             })
             .OrderByDescending(c => c.LastAt ?? DateTime.MinValue)
             .ToList();
@@ -418,7 +420,8 @@ public record ConversationDto(
     string? LastBody,
     DateTime? LastAt,
     bool LastFromMe,
-    int Unread);
+    int Unread,
+    bool Online = false);
 
 public record MessageDto(int Id, bool Mine, string Body, DateTime CreatedAt, DateTime? ReadAt,
     string? AudioUrl = null, int? AudioDurationMs = null, string? ImageUrl = null,
