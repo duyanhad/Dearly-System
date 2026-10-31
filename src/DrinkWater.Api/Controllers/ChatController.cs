@@ -108,9 +108,24 @@ public class ChatController(
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.ReadAt, clock.UtcNow), ct);
 
         messages.Reverse();
+
+        // Cảm xúc trên từng tin (nhóm một lần để không truy vấn lặp).
+        var ids = messages.Select(m => m.Id).ToList();
+        var reactions = await db.MessageReactions
+            .AsNoTracking()
+            .Where(r => ids.Contains(r.MessageId))
+            .ToListAsync(ct);
+
+        List<ReactionDto> ReactionsOf(int messageId) => reactions
+            .Where(r => r.MessageId == messageId)
+            .GroupBy(r => r.Emoji)
+            .Select(g => new ReactionDto(g.Key, g.Count(), g.Any(r => r.UserId == me)))
+            .OrderByDescending(r => r.Count)
+            .ToList();
+
         return messages
             .Select(m => new MessageDto(m.Id, m.SenderId == me, m.Body, m.CreatedAt, m.ReadAt,
-                m.AudioUrl, m.AudioDurationMs))
+                m.AudioUrl, m.AudioDurationMs, m.ImageUrl, ReactionsOf(m.Id)))
             .ToList();
     }
 
@@ -158,14 +173,16 @@ public class ChatController(
             message.Body,
             message.AudioUrl,
             message.AudioDurationMs,
+            message.ImageUrl,
             message.CreatedAt
         }, ct);
 
-        await webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới", "Đã gửi một tin nhắn thoại 🎤",
-            "normal", ct: ct);
+        // Push chạy nền để phản hồi gửi tin không phải chờ dịch vụ push.
+        _ = webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới", "Đã gửi một tin nhắn thoại 🎤",
+            "normal");
 
         return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null,
-            message.AudioUrl, message.AudioDurationMs);
+            message.AudioUrl, message.AudioDurationMs, message.ImageUrl, []);
     }
 
     private const long MaxVoiceBytes = 5 * 1024 * 1024;
@@ -215,14 +232,91 @@ public class ChatController(
             FromName = sender.FullName,
             sender.AvatarUrl,
             message.Body,
+            message.ImageUrl,
             message.CreatedAt
         }, ct);
 
-        // Web Push để người nhận thấy tin nhắn cả khi đã đóng app / tắt màn hình.
-        await webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới",
-            body.Length > 120 ? body[..120] + "…" : body, "normal", ct: ct);
+        // Web Push để người nhận thấy tin nhắn cả khi đã đóng app / tắt màn hình (chạy nền cho nhanh).
+        _ = webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới",
+            body.Length > 120 ? body[..120] + "…" : body, "normal");
 
-        return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null);
+        return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null,
+            null, null, message.ImageUrl, []);
+    }
+
+    /// <summary>Gửi ảnh trong chat (multipart: image, tối đa 5 MB).</summary>
+    [HttpPost("{userId:guid}/image")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
+    public async Task<ActionResult<MessageDto>> SendImage(Guid userId, IFormFile image, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        if (userId == me) return Problem(statusCode: 400, title: "Không thể tự nhắn chính mình");
+        if (!await AreFriendsAsync(me, userId, ct))
+            return Problem(statusCode: 403, title: "Chỉ chat được với bạn bè");
+        if (image is null || image.Length == 0) return Problem(statusCode: 400, title: "Thiếu ảnh");
+        if (image.Length > MaxVoiceBytes) return Problem(statusCode: 400, title: "Ảnh tối đa 5 MB");
+
+        var (extension, error) = await ImageUpload.PrepareAsync(image, MaxVoiceBytes);
+        if (error is not null) return Problem(statusCode: 400, title: error);
+        await using var stream = image.OpenReadStream();
+        var url = await storage.SaveAsync(stream, extension!, ct);
+
+        var message = new Message { SenderId = me, ReceiverId = userId, Body = string.Empty, ImageUrl = url };
+        db.Messages.Add(message);
+        await db.SaveChangesAsync(ct);
+
+        var sender = await db.Users.AsNoTracking()
+            .Where(u => u.Id == me)
+            .Select(u => new { u.FullName, u.AvatarUrl })
+            .FirstAsync(ct);
+
+        await hub.Clients.User(userId.ToString()).SendAsync("ReceiveMessage", new
+        {
+            message.Id,
+            FromUserId = me,
+            FromName = sender.FullName,
+            sender.AvatarUrl,
+            message.Body,
+            message.ImageUrl,
+            message.CreatedAt
+        }, ct);
+
+        _ = webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới", "Đã gửi một bức ảnh 🖼️", "normal");
+
+        return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null,
+            null, null, message.ImageUrl, []);
+    }
+
+    /// <summary>Thả / đổi / bỏ cảm xúc trên một tin nhắn (chỉ hai người trong hội thoại).</summary>
+    [HttpPost("messages/{messageId:int}/react")]
+    public async Task<ActionResult<List<ReactionDto>>> React(int messageId, ReactRequest req, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == messageId, ct);
+        if (message is null) return NotFound();
+        if (message.SenderId != me && message.ReceiverId != me)
+            return Problem(statusCode: 403, title: "Không phải tin nhắn của bạn");
+
+        var emoji = (req.Emoji ?? string.Empty).Trim();
+        var mine = await db.MessageReactions.FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == me, ct);
+        if (mine is not null && mine.Emoji == emoji)
+            db.MessageReactions.Remove(mine); // bấm lại đúng emoji đó → bỏ cảm xúc
+        else if (mine is not null)
+            mine.Emoji = emoji;
+        else if (emoji.Length > 0)
+            db.MessageReactions.Add(new MessageReaction { MessageId = messageId, UserId = me, Emoji = emoji });
+        await db.SaveChangesAsync(ct);
+
+        var reactions = await db.MessageReactions.AsNoTracking()
+            .Where(r => r.MessageId == messageId)
+            .GroupBy(r => r.Emoji)
+            .Select(g => new ReactionDto(g.Key, g.Count(), g.Any(r => r.UserId == me)))
+            .OrderByDescending(r => r.Count)
+            .ToListAsync(ct);
+
+        var other = message.SenderId == me ? message.ReceiverId : message.SenderId;
+        await hub.Clients.User(other.ToString()).SendAsync("ReceiveReaction", new { MessageId = messageId, Reactions = reactions }, ct);
+        return reactions;
     }
 
     /// <summary>Đánh dấu đã đọc toàn bộ tin của một người (dùng khi mở trang chat trên thiết bị khác).</summary>
@@ -261,4 +355,10 @@ public record ConversationDto(
     int Unread);
 
 public record MessageDto(int Id, bool Mine, string Body, DateTime CreatedAt, DateTime? ReadAt,
-    string? AudioUrl = null, int? AudioDurationMs = null);
+    string? AudioUrl = null, int? AudioDurationMs = null, string? ImageUrl = null,
+    List<ReactionDto>? Reactions = null);
+
+/// <summary>Một cảm xúc trên tin nhắn: emoji, số người thả và tôi đã thả chưa.</summary>
+public record ReactionDto(string Emoji, int Count, bool Mine);
+
+public record ReactRequest([MaxLength(16)] string Emoji);

@@ -10,6 +10,8 @@ public class Message
     /// <summary>Tin nhắn thoại: đường dẫn file ghi âm (null với tin chữ).</summary>
     public string? AudioUrl { get; set; }
     public int? AudioDurationMs { get; set; }
+    /// <summary>Tin nhắn ảnh: đường dẫn ảnh đã tải lên (null với tin chữ/thoại).</summary>
+    public string? ImageUrl { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ReadAt { get; set; }
 }

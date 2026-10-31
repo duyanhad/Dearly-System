@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FriendNickname> FriendNicknames => Set<FriendNickname>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
     public DbSet<Era> Eras => Set<Era>();
     public DbSet<EraGroup> EraGroups => Set<EraGroup>();
     public DbSet<Currency> Currencies => Set<Currency>();
