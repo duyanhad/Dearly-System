@@ -21,9 +21,15 @@ public sealed class SupabaseStorage(
         var path = $"{now:yyyy}/{now:MM}/{Guid.NewGuid():N}{extension}";
 
         // Ảnh được nén + thu nhỏ trước khi gửi để trang tải nhanh (file âm thanh giữ nguyên).
-        var payload = ImageOptimizer.IsImage(extension)
-            ? new MemoryStream(await ImageOptimizer.OptimizeAsync(content, extension, ct: ct))
-            : content;
+        var payload = content;
+        var storedExtension = extension;
+        if (ImageOptimizer.IsImage(extension))
+        {
+            var (bytes, ext) = await ImageOptimizer.OptimizeAsync(content, extension, ct: ct);
+            storedExtension = ext;
+            path = $"{now:yyyy}/{now:MM}/{Guid.NewGuid():N}{ext}";
+            payload = new MemoryStream(bytes);
+        }
         await using var owned = payload as MemoryStream ?? null;
 
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{_url}/storage/v1/object/{_bucket}/{path}")
@@ -33,7 +39,7 @@ public sealed class SupabaseStorage(
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _key);
         req.Headers.TryAddWithoutValidation("apikey", _key);
         req.Headers.TryAddWithoutValidation("x-upsert", "true");
-        req.Content.Headers.ContentType = new MediaTypeHeaderValue(Mime(extension));
+        req.Content.Headers.ContentType = new MediaTypeHeaderValue(Mime(storedExtension));
 
         var resp = await http.SendAsync(req, ct);
         if (!resp.IsSuccessStatusCode)

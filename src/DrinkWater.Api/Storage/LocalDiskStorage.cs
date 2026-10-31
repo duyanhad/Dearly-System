@@ -19,8 +19,8 @@ public sealed class LocalDiskStorage(
         {
             if (ImageOptimizer.IsImage(extension))
             {
-                var optimized = await ImageOptimizer.OptimizeAsync(content, extension, ct: ct);
-                await file.WriteAsync(optimized, ct);
+                var (bytes, _) = await ImageOptimizer.OptimizeAsync(content, extension, ct: ct);
+                await file.WriteAsync(bytes, ct);
             }
             else
             {

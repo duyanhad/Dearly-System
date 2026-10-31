@@ -2,6 +2,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
 namespace DrinkWater.Api.Storage;
@@ -16,8 +17,9 @@ public static class ImageOptimizer
     public static bool IsImage(string extension) =>
         extension.ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".webp";
 
-    /// <summary>Thu nhỏ để cạnh dài không quá <paramref name="maxSide"/> và nén lại theo định dạng.</summary>
-    public static async Task<byte[]> OptimizeAsync(Stream source, string extension, int maxSide = 1280, int quality = 82, CancellationToken ct = default)
+    /// <summary>Thu nhỏ + nén ảnh; trả cả phần mở rộng mới (PNG không có alpha → JPEG cho nhẹ hơn nhiều).</summary>
+    public static async Task<(byte[] Bytes, string Extension)> OptimizeAsync(
+        Stream source, string extension, int maxSide = 1280, int quality = 82, CancellationToken ct = default)
     {
         using var buffer = new MemoryStream();
         await source.CopyToAsync(buffer, ct);
@@ -25,7 +27,7 @@ public static class ImageOptimizer
 
         try
         {
-            using var image = await Image.LoadAsync(buffer, ct);
+            using var image = await Image.LoadAsync<Rgba32>(buffer, ct);
             if (image.Width > maxSide || image.Height > maxSide)
             {
                 image.Mutate(x => x.Resize(new ResizeOptions
@@ -36,27 +38,37 @@ public static class ImageOptimizer
                 }));
             }
 
-            using var output = new MemoryStream();
-            switch (extension.ToLowerInvariant())
-            {
-                case ".png":
-                    await image.SaveAsPngAsync(output, new PngEncoder { CompressionLevel = PngCompressionLevel.BestCompression }, ct);
-                    break;
-                case ".webp":
-                    await image.SaveAsWebpAsync(output, new WebpEncoder { Quality = quality }, ct);
-                    break;
-                default:
-                    await image.SaveAsJpegAsync(output, new JpegEncoder { Quality = quality }, ct);
-                    break;
-            }
+            var original = extension.ToLowerInvariant();
+            // Ảnh chụp thường (không trong suốt) → JPEG: nhẹ hơn PNG 5-10 lần, trang tải nhanh hẳn.
+            var target = original;
+            if (original == ".png" && !HasTransparency(image)) target = ".jpg";
 
-            // Nén không có lợi (ảnh đã nhỏ) → giữ bản gốc.
-            return output.Length < buffer.Length ? output.ToArray() : buffer.ToArray();
+            using var output = new MemoryStream();
+            if (target == ".png")
+                await image.SaveAsPngAsync(output, new PngEncoder { CompressionLevel = PngCompressionLevel.BestCompression }, ct);
+            else if (target == ".webp")
+                await image.SaveAsWebpAsync(output, new WebpEncoder { Quality = quality }, ct);
+            else
+                await image.SaveAsJpegAsync(output, new JpegEncoder { Quality = quality }, ct);
+
+            // Nén không có lợi → giữ bản gốc.
+            return output.Length < buffer.Length ? (output.ToArray(), target) : (buffer.ToArray(), original);
         }
         catch
         {
             // Ảnh lạ/không giải mã được: dùng nguyên bản, không làm hỏng luồng upload.
-            return buffer.ToArray();
+            return (buffer.ToArray(), extension);
         }
+    }
+
+    /// <summary>Kiểm tra ảnh có pixel trong suốt (quét mẫu để không tốn CPU).</summary>
+    private static bool HasTransparency(Image<Rgba32> image)
+    {
+        var stepX = Math.Max(1, image.Width / 120);
+        var stepY = Math.Max(1, image.Height / 120);
+        for (var y = 0; y < image.Height; y += stepY)
+        for (var x = 0; x < image.Width; x += stepX)
+            if (image[x, y].A < 250) return true;
+        return false;
     }
 }
