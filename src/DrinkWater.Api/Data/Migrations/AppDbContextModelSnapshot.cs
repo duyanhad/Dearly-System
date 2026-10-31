@@ -628,6 +628,9 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
 
+                    b.Property<DateTime?>("EndedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Minutes")
                         .HasColumnType("integer");
 
@@ -638,10 +641,16 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<string>("PhotoUrl")
                         .HasColumnType("text");
 
+                    b.Property<int>("PlannedMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<string>("RejectReason")
                         .HasColumnType("text");
 
                     b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("StartedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")

@@ -33,15 +33,28 @@ public class SleepController(
         return Summarize(logs, goal);
     }
 
-    /// <summary>Bắt đầu giấc ngủ: giờ đi ngủ + ảnh minh chứng (multipart: bedTime, photo?).</summary>
+    /// <summary>Bắt đầu giấc ngủ: chụp 1 ảnh minh chứng + hẹn giờ; bộ đếm chạy từ lúc này.</summary>
     [HttpPost("start")]
     [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
-    public async Task<ActionResult<SleepSummaryDto>> Start([FromForm] string bedTime, IFormFile? photo)
+    public async Task<ActionResult<SleepSummaryDto>> Start(
+        [FromForm] string bedTime,
+        IFormFile? photo,
+        [FromForm] int? plannedMinutes)
     {
         if (!TimePattern.IsMatch(bedTime ?? string.Empty))
             return Problem(statusCode: 400, title: "Giờ đi ngủ không hợp lệ (HH:mm)");
 
         var userId = User.GetUserId();
+
+        // Đang có giấc chưa kết thúc → trả về luôn, tránh tạo trùng.
+        var running = await db.SleepLogs
+            .FirstOrDefaultAsync(l => l.UserId == userId && l.Status == "sleeping");
+        if (running is not null)
+        {
+            var (current, goalNow) = await LoadAsync(userId);
+            return Summarize(current, goalNow);
+        }
+
         string? photoUrl = null;
         if (photo is { Length: > 0 })
         {
@@ -51,28 +64,75 @@ public class SleepController(
             photoUrl = await storage.SaveAsync(stream, extension!);
         }
 
+        var goalMinutes = await db.HabitSettings
+            .Where(h => h.UserId == userId && h.Kind == "sleep")
+            .Select(h => h.TargetValue)
+            .FirstOrDefaultAsync();
+
         var nowLocal = DateTime.Now;
         var day = DateOnly.FromDateTime(nowLocal);
-        // Đêm bắt đầu buổi tối thuộc về ngày thức dậy: bắt đầu sau 12h → ngày mai;
-        // còn bấm "bắt đầu" lúc rạng sáng cho giờ ngủ tối hôm trước → vẫn thuộc hôm nay.
+        // Ngủ buổi tối (sau 12h) thuộc về ngày mai; giấc ban ngày vẫn thuộc hôm nay.
         if (ToMinutes(bedTime) >= 720 && nowLocal.Hour >= 12) day = day.AddDays(1);
-        var log = await db.SleepLogs.FirstOrDefaultAsync(l => l.UserId == userId && l.Date == day);
-        if (log is null)
+
+        var log = new SleepLog
         {
-            log = new SleepLog { UserId = userId, Date = day };
-            db.SleepLogs.Add(log);
+            UserId = userId,
+            Date = day,
+            BedMinutes = ToMinutes(bedTime),
+            WakeMinutes = 0,
+            Minutes = 0,
+            Status = "sleeping",
+            StartedAtUtc = DateTime.UtcNow,
+            PlannedMinutes = Math.Clamp(plannedMinutes ?? (goalMinutes > 0 ? goalMinutes : 480), 15, 1080)
+        };
+        if (photoUrl is not null) log.PhotoUrl = photoUrl;
+        db.SleepLogs.Add(log);
+        await db.SaveChangesAsync();
+
+        var (logs, goal) = await LoadAsync(userId);
+        return Summarize(logs, goal);
+    }
+
+    /// <summary>Dừng giấc ngủ đang chạy (kể cả dừng sớm): cần 1 ảnh minh chứng lúc thức.</summary>
+    [HttpPost("{id:guid}/stop")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
+    public async Task<ActionResult<SleepSummaryDto>> Stop(Guid id, IFormFile? photo, [FromForm] string? note)
+    {
+        var userId = User.GetUserId();
+        var log = await db.SleepLogs.FirstOrDefaultAsync(l => l.Id == id && l.UserId == userId);
+        if (log is null) return NotFound();
+
+        string? photoUrl = null;
+        if (photo is { Length: > 0 })
+        {
+            var (extension, error) = await ImageUpload.PrepareAsync(photo, storageOptions.Value.MaxBytes);
+            if (error is not null) return Problem(statusCode: 400, title: error);
+            await using var stream = photo.OpenReadStream();
+            photoUrl = await storage.SaveAsync(stream, extension!);
         }
 
-        // Chưa biết giờ thức nên số phút = 0; phiếu ở trạng thái "sleeping" (không tính vào mục tiêu).
-        log.BedMinutes = ToMinutes(bedTime);
-        log.WakeMinutes = 0;
-        log.Minutes = 0;
-        if (photoUrl is not null) log.PhotoUrl = photoUrl;
-        log.Status = "sleeping";
+        var started = log.StartedAtUtc ?? log.CreatedAt;
+        var ended = DateTime.UtcNow;
+        var minutes = (int)Math.Round((ended - started).TotalMinutes);
+        if (minutes < 1) minutes = 1;
+        if (minutes > 1080) minutes = 1080;
+
+        var localEnd = DateTime.Now;
+        log.EndedAtUtc = ended;
+        log.WakeMinutes = localEnd.Hour * 60 + localEnd.Minute;
+        log.Minutes = minutes;
+        if (photoUrl is not null) log.WakePhotoUrl = photoUrl;
+        log.Note = (note ?? string.Empty).Trim();
+
+        // Dừng sớm mà chưa đủ giấc → vẫn ghi nhận nhưng đánh dấu để partner xem.
+        var user = await db.Users.FindAsync(userId);
+        var needsReview = user?.PartnerId is not null;
+        log.Status = needsReview ? "pending" : "approved";
         log.RejectReason = null;
-        log.ReviewedAt = null;
+        log.ReviewedAt = needsReview ? null : DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+        if (!needsReview) await rewards.AwardIfReachedAsync(userId, "sleep", log.Date);
 
         var (logs, goal) = await LoadAsync(userId);
         return Summarize(logs, goal);
@@ -250,6 +310,18 @@ public class SleepController(
             else break;
         }
 
+        // Tổng ngủ hôm nay: cộng mọi giấc (kể cả giấc đang chạy tính tới hiện tại) → % sáng dần.
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var minutesToday = 0;
+        foreach (var log in logs.Where(l => l.Date == today || (l.StartedAtUtc is not null && DateOnly.FromDateTime(l.StartedAtUtc.Value.ToLocalTime()) == today)))
+        {
+            if (log.Status == "rejected") continue;
+            minutesToday += log.Status == "sleeping" && log.StartedAtUtc is { } started
+                ? Math.Max(0, (int)Math.Round((DateTime.UtcNow - started).TotalMinutes))
+                : log.Minutes;
+        }
+        var percentToday = goal > 0 ? Math.Min(100, (int)Math.Round(minutesToday * 100.0 / goal)) : 0;
+
         return new SleepSummaryDto(
             goal,
             average,
@@ -257,7 +329,9 @@ public class SleepController(
             last7.Count,
             hit,
             streak,
-            logs.OrderBy(l => l.Date).Select(ToDto).ToList());
+            logs.OrderBy(l => l.Date).Select(ToDto).ToList(),
+            minutesToday,
+            percentToday);
     }
 
     private static SleepLogDto ToDto(SleepLog l) => new(
@@ -270,7 +344,10 @@ public class SleepController(
         l.WakePhotoUrl,
         l.Note,
         l.Status,
-        l.RejectReason);
+        l.RejectReason,
+        l.StartedAtUtc,
+        l.EndedAtUtc,
+        l.PlannedMinutes);
 
     private static int ToMinutes(string hhmm)
     {

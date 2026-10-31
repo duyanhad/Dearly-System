@@ -21,6 +21,15 @@ public class SleepLog
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Thời điểm bấm "Bắt đầu ngủ" (UTC) — dùng cho bộ đếm thực tế.</summary>
+    public DateTime? StartedAtUtc { get; set; }
+
+    /// <summary>Thời điểm bấm "Dừng ngủ" / tự kết thúc (UTC).</summary>
+    public DateTime? EndedAtUtc { get; set; }
+
+    /// <summary>Số phút dự định ngủ (mục tiêu của đêm) để biết khi nào đủ giấc.</summary>
+    public int PlannedMinutes { get; set; }
+
     /// <summary>Ảnh minh chứng (partner duyệt) — có thể null nếu người dùng không cần ảnh.</summary>
     public string? PhotoUrl { get; set; }
 
