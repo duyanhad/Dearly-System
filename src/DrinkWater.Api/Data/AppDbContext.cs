@@ -165,7 +165,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<SleepLog>(e =>
         {
-            e.HasIndex(x => new { x.UserId, x.Date }).IsUnique();
+            // Nhiều giấc trong cùng một ngày (sáng/trưa/tối) cộng dồn % → không unique theo ngày.
+            e.HasIndex(x => new { x.UserId, x.Date });
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

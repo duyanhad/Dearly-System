@@ -668,8 +668,7 @@ namespace DrinkWater.Api.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "Date")
-                        .IsUnique();
+                    b.HasIndex("UserId", "Date");
 
                     b.ToTable("SleepLogs");
                 });
