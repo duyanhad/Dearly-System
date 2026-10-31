@@ -1,10 +1,12 @@
 using System.Text.RegularExpressions;
 using DrinkWater.Api.Data;
 using DrinkWater.Api.Entities;
+using DrinkWater.Api.Hubs;
 using DrinkWater.Api.Services;
 using DrinkWater.Api.Storage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -36,7 +38,9 @@ public class HabitLogsController(
     AppDbContext db,
     IImageStorage storage,
     IOptions<StorageOptions> storageOptions,
-    RewardService rewards) : ControllerBase
+    RewardService rewards,
+    IHubContext<NotificationHub> hub,
+    IWebPushSender webPush) : ControllerBase
 {
     private static readonly Regex TimePattern = new(@"^([01]\d|2[0-3]):[0-5]\d$", RegexOptions.Compiled);
 
@@ -146,6 +150,30 @@ public class HabitLogsController(
         }
 
         await db.SaveChangesAsync();
+
+        // Phiếu chờ duyệt → vào chuông + web push cho partner (thấy cả khi tắt app).
+        if (needsReview && user?.PartnerId is { } partnerId)
+        {
+            var title = "Phiếu mới chờ duyệt";
+            var msg = $"{user.FullName} vừa ghi {kind}.";
+            db.Notifications.Add(new Notification
+            {
+                SenderId = userId,
+                ReceiverId = partnerId,
+                Title = title,
+                Message = msg,
+                Type = NotificationTypes.Proof,
+            });
+            await db.SaveChangesAsync();
+            await hub.Clients.User(partnerId.ToString()).SendAsync("ReceiveProof", new
+            {
+                Title = title,
+                Message = msg,
+                UserId = userId,
+                Kind = kind
+            });
+            await webPush.SendToUserAsync(partnerId, title, msg, "normal");
+        }
 
         // Đạt mục tiêu ngày thì thưởng tiền của nhóm nhu cầu (mỗi ngày một lần).
         if (log.Status == "approved") await rewards.AwardIfReachedAsync(userId, kind, log.Date);

@@ -141,9 +141,18 @@ public class SleepController(
         await db.SaveChangesAsync();
         if (!needsReview) await rewards.AwardIfReachedAsync(userId, "sleep", log.Date);
 
-        // Phiếu ngủ mới → báo partner ngay (trong app + push khi app đóng).
+        // Phiếu ngủ mới → báo partner ngay (chuông trong app + push khi app đóng).
         if (needsReview && user?.PartnerId is { } partnerId)
         {
+            db.Notifications.Add(new Notification
+            {
+                SenderId = userId,
+                ReceiverId = partnerId,
+                Title = "Phiếu giấc ngủ chờ duyệt",
+                Message = $"{(int)(minutes / 60.0)}h{minutes % 60:00} · đã chụp ảnh minh chứng",
+                Type = NotificationTypes.Proof,
+            });
+            await db.SaveChangesAsync();
             var name = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.FullName).FirstAsync();
             var message = $"{(int)(minutes / 60.0)}h{minutes % 60:00} · đã chụp ảnh minh chứng";
             await hub.Clients.User(partnerId.ToString()).SendAsync("ReceiveProof", new

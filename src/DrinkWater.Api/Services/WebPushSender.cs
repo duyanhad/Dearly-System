@@ -36,6 +36,11 @@ public sealed class WebPushSender(
             .ToListAsync(ct);
         if (subscriptions.Count == 0) return 0;
 
+        // Số chấm đỏ trên icon app: thông báo chưa đọc + tin nhắn chưa đọc (tối thiểu 1 cho push này).
+        var badge = await db.Notifications.CountAsync(n => n.ReceiverId == userId && !n.IsRead, ct)
+                    + await db.Messages.CountAsync(m => m.ReceiverId == userId && m.ReadAt == null, ct);
+        if (badge < 1) badge = 1;
+
         var client = new WebPushClient();
         var payload = JsonSerializer.Serialize(new
         {
@@ -43,6 +48,7 @@ public sealed class WebPushSender(
             body,
             style = style ?? "normal",
             tag = tagId is null ? $"drinkwater-reminder-{userId}" : $"drinkwater-reminder-{userId}-{tagId}",
+            badge,
             url = "/"
         });
 

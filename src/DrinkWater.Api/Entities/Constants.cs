@@ -33,6 +33,8 @@ public static class NotificationTypes
     public const string Friend = "Friend";
     /// <summary>Được chọn làm partner duyệt ảnh.</summary>
     public const string Partner = "Partner";
+    /// <summary>Phiếu minh chứng mới chờ duyệt.</summary>
+    public const string Proof = "Proof";
 }
 
 public static class ReminderStyles

@@ -21,7 +21,8 @@ public class WaterController(
     IOptions<StorageOptions> storageOptions,
     IHubContext<NotificationHub> hub,
     AppDbContext db,
-    IPushSender push) : ControllerBase
+    IPushSender push,
+    IWebPushSender webPush) : ControllerBase
 {
     [HttpPost("log")]
     [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
@@ -67,12 +68,23 @@ public class WaterController(
                     UserId = me
                 };
                 await hub.Clients.User(partnerId.ToString()).SendAsync("ReceiveProof", payload);
+                // Vào chuông thông báo + web push để partner thấy cả khi đã tắt app.
+                db.Notifications.Add(new Notification
+                {
+                    SenderId = me,
+                    ReceiverId = partnerId,
+                    Title = payload.Title,
+                    Message = payload.Message,
+                    Type = NotificationTypes.Proof,
+                });
+                await db.SaveChangesAsync();
                 var partnerToken = await db.Users.AsNoTracking()
                     .Where(u => u.Id == partnerId)
                     .Select(u => u.FCMToken)
                     .FirstOrDefaultAsync();
                 if (!string.IsNullOrWhiteSpace(partnerToken))
                     await push.SendAsync(partnerToken, payload.Title, payload.Message);
+                await webPush.SendToUserAsync(partnerId, payload.Title, payload.Message, "normal", ct: HttpContext.RequestAborted);
             }
         }
 
