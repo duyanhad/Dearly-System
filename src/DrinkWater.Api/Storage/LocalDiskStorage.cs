@@ -16,7 +16,17 @@ public sealed class LocalDiskStorage(
 
         var name = $"{Guid.NewGuid():N}{extension}";
         await using (var file = File.Create(Path.Combine(folder, name)))
-            await content.CopyToAsync(file, ct);
+        {
+            if (ImageOptimizer.IsImage(extension))
+            {
+                var optimized = await ImageOptimizer.OptimizeAsync(content, extension, ct: ct);
+                await file.WriteAsync(optimized, ct);
+            }
+            else
+            {
+                await content.CopyToAsync(file, ct);
+            }
+        }
 
         return $"/uploads/{now:yyyy}/{now:MM}/{name}";
     }

@@ -20,9 +20,15 @@ public sealed class SupabaseStorage(
         var now = clock.LocalNow;
         var path = $"{now:yyyy}/{now:MM}/{Guid.NewGuid():N}{extension}";
 
+        // Ảnh được nén + thu nhỏ trước khi gửi để trang tải nhanh (file âm thanh giữ nguyên).
+        var payload = ImageOptimizer.IsImage(extension)
+            ? new MemoryStream(await ImageOptimizer.OptimizeAsync(content, extension, ct: ct))
+            : content;
+        await using var owned = payload as MemoryStream ?? null;
+
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{_url}/storage/v1/object/{_bucket}/{path}")
         {
-            Content = new StreamContent(content)
+            Content = new StreamContent(payload)
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _key);
         req.Headers.TryAddWithoutValidation("apikey", _key);
