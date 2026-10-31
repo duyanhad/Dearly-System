@@ -325,6 +325,36 @@ public class SleepController(
         return Summarize(logs, goal, user.SleepDayStartAt);
     }
 
+    /// <summary>Partner chốt ngày giúp người mình theo dõi (bắt đầu ngày ngủ mới cho họ).</summary>
+    [HttpPost("close-day/{userId:guid}")]
+    public async Task<ActionResult<SleepSummaryDto>> CloseDayFor(Guid userId)
+    {
+        var me = User.GetUserId();
+        var owner = await db.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new { u.PartnerId, u.FullName })
+            .FirstOrDefaultAsync();
+        if (owner is null) return NotFound();
+        if (owner.PartnerId != me) return Problem(statusCode: 403, title: "Bạn không phải partner của người này");
+
+        var user = await db.Users.FindAsync(userId);
+        if (user is null) return NotFound();
+        user.SleepDayStartAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        // Báo cho chủ tài khoản biết partner vừa chốt ngày giúp.
+        await hub.Clients.User(userId.ToString()).SendAsync("ReceiveBroadcast", new
+        {
+            title = "Partner đã chốt ngày giấc ngủ",
+            message = "Bạn bắt đầu một ngày ngủ mới — % và quỹ giấc ngủ đã về 0."
+        });
+        await webPush.SendToUserAsync(userId, "Partner đã chốt ngày giấc ngủ",
+            "Bạn bắt đầu một ngày ngủ mới — % và quỹ giấc ngủ đã về 0.", "gentle");
+
+        var (logs, goal) = await LoadAsync(userId);
+        return Summarize(logs, goal, user.SleepDayStartAt);
+    }
+
     /// <summary>Mốc "chốt ngày" của người dùng (null = chưa chốt lần nào).</summary>
     private async Task<DateTime?> DayStartAsync(Guid userId) =>
         await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.SleepDayStartAt).FirstOrDefaultAsync();
