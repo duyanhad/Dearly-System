@@ -75,8 +75,8 @@ public class SleepController(
 
         var nowLocal = DateTime.Now;
         var day = DateOnly.FromDateTime(nowLocal);
-        // Ngủ buổi tối (sau 12h) thuộc về ngày mai; giấc ban ngày vẫn thuộc hôm nay.
-        if (ToMinutes(bedTime) >= 720 && nowLocal.Hour >= 12) day = day.AddDays(1);
+        // Chỉ giấc bắt đầu buổi tối (từ 18h) mới thuộc đêm của ngày mai; giấc trưa/chiều vẫn tính hôm nay.
+        if (ToMinutes(bedTime) >= 1080) day = day.AddDays(1);
 
         var log = new SleepLog
         {
