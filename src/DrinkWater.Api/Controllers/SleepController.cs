@@ -100,7 +100,7 @@ public class SleepController(
     /// <summary>Dừng giấc ngủ đang chạy (kể cả dừng sớm): cần 1 ảnh minh chứng lúc thức.</summary>
     [HttpPost("{id:guid}/stop")]
     [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
-    public async Task<ActionResult<SleepSummaryDto>> Stop(Guid id, IFormFile? photo, [FromForm] string? note)
+    public async Task<ActionResult<SleepSummaryDto>> Stop(Guid id, IFormFile? photo, [FromForm] string? note, [FromForm] string? wakeTime)
     {
         var userId = User.GetUserId();
         var log = await db.SleepLogs.FirstOrDefaultAsync(l => l.Id == id && l.UserId == userId);
@@ -121,9 +121,12 @@ public class SleepController(
         if (minutes < 1) minutes = 1;
         if (minutes > 1080) minutes = 1080;
 
-        var localEnd = DateTime.Now;
+        // Giờ thức hiển thị theo giờ máy người dùng (server chạy UTC nên không dùng DateTime.Now).
+        var wakeMinutes = TimePattern.IsMatch(wakeTime ?? string.Empty)
+            ? ToMinutes(wakeTime!)
+            : DateTime.Now.Hour * 60 + DateTime.Now.Minute;
         log.EndedAtUtc = ended;
-        log.WakeMinutes = localEnd.Hour * 60 + localEnd.Minute;
+        log.WakeMinutes = wakeMinutes;
         log.Minutes = minutes;
         if (photoUrl is not null) log.WakePhotoUrl = photoUrl;
         log.Note = (note ?? string.Empty).Trim();
