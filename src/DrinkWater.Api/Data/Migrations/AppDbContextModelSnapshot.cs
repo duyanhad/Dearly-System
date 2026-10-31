@@ -485,6 +485,9 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("ReadAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -501,6 +504,34 @@ namespace DrinkWater.Api.Data.Migrations
                     b.HasIndex("SenderId", "ReceiverId", "CreatedAt");
 
                     b.ToTable("Messages");
+                });
+
+            modelBuilder.Entity("DrinkWater.Api.Entities.MessageReaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Emoji")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("MessageId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId");
+
+                    b.ToTable("MessageReactions");
                 });
 
             modelBuilder.Entity("DrinkWater.Api.Entities.NeedReward", b =>
@@ -1010,6 +1041,17 @@ namespace DrinkWater.Api.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("DrinkWater.Api.Entities.MessageReaction", b =>
+                {
+                    b.HasOne("DrinkWater.Api.Entities.Message", "Message")
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Message");
                 });
 
             modelBuilder.Entity("DrinkWater.Api.Entities.PushSubscription", b =>
