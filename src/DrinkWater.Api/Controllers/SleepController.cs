@@ -2,10 +2,12 @@ using System.Text.RegularExpressions;
 using DrinkWater.Api.Data;
 using DrinkWater.Api.Dtos;
 using DrinkWater.Api.Entities;
+using DrinkWater.Api.Hubs;
 using DrinkWater.Api.Services;
 using DrinkWater.Api.Storage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -22,7 +24,9 @@ public class SleepController(
     AppDbContext db,
     IImageStorage storage,
     IOptions<StorageOptions> storageOptions,
-    RewardService rewards) : ControllerBase
+    RewardService rewards,
+    IHubContext<NotificationHub> hub,
+    IWebPushSender webPush) : ControllerBase
 {
     private static readonly Regex TimePattern = new(@"^([01]\d|2[0-3]):[0-5]\d$", RegexOptions.Compiled);
 
@@ -133,6 +137,20 @@ public class SleepController(
 
         await db.SaveChangesAsync();
         if (!needsReview) await rewards.AwardIfReachedAsync(userId, "sleep", log.Date);
+
+        // Phiếu ngủ mới → báo partner ngay (trong app + push khi app đóng).
+        if (needsReview && user?.PartnerId is { } partnerId)
+        {
+            var name = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.FullName).FirstAsync();
+            var message = $"{(int)(minutes / 60.0)}h{minutes % 60:00} · đã chụp ảnh minh chứng";
+            await hub.Clients.User(partnerId.ToString()).SendAsync("ReceiveProof", new
+            {
+                title = $"{name} vừa kết thúc giấc ngủ",
+                message,
+                userId
+            });
+            await webPush.SendToUserAsync(partnerId, $"{name} vừa kết thúc giấc ngủ", message, "normal");
+        }
 
         var (logs, goal) = await LoadAsync(userId);
         return Summarize(logs, goal);
