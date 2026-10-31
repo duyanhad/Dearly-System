@@ -790,6 +790,9 @@ namespace DrinkWater.Api.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("SleepDayStartAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("TargetWaterMl")
                         .HasColumnType("integer");
 

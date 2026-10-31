@@ -34,7 +34,7 @@ public class SleepController(
     public async Task<ActionResult<SleepSummaryDto>> Get()
     {
         var (logs, goal) = await LoadAsync(User.GetUserId());
-        return Summarize(logs, goal);
+        return Summarize(logs, goal, await DayStartAsync(User.GetUserId()));
     }
 
     /// <summary>Bắt đầu giấc ngủ: chụp 1 ảnh minh chứng + hẹn giờ; bộ đếm chạy từ lúc này.</summary>
@@ -56,7 +56,7 @@ public class SleepController(
         if (running is not null)
         {
             var (current, goalNow) = await LoadAsync(userId);
-            return Summarize(current, goalNow);
+            return Summarize(current, goalNow, await DayStartAsync(userId));
         }
 
         string? photoUrl = null;
@@ -94,7 +94,7 @@ public class SleepController(
         await db.SaveChangesAsync();
 
         var (logs, goal) = await LoadAsync(userId);
-        return Summarize(logs, goal);
+        return Summarize(logs, goal, await DayStartAsync(userId));
     }
 
     /// <summary>Dừng giấc ngủ đang chạy (kể cả dừng sớm): cần 1 ảnh minh chứng lúc thức.</summary>
@@ -153,7 +153,7 @@ public class SleepController(
         }
 
         var (logs, goal) = await LoadAsync(userId);
-        return Summarize(logs, goal);
+        return Summarize(logs, goal, await DayStartAsync(userId));
     }
 
     /// <summary>Gửi giấc ngủ đêm nay (multipart: bedTime, wakeTime, note, date?, photo?).</summary>
@@ -232,7 +232,7 @@ public class SleepController(
         if (!needsReview) await rewards.AwardIfReachedAsync(userId, "sleep", log.Date);
 
         var (logs, goal) = await LoadAsync(userId);
-        return Summarize(logs, goal);
+        return Summarize(logs, goal, await DayStartAsync(userId));
     }
 
     /// <summary>Các đêm của một tháng — dùng cho trang Lịch.</summary>
@@ -291,7 +291,7 @@ public class SleepController(
         if (req.Approve) await rewards.AwardIfReachedAsync(log.UserId, "sleep", log.Date);
 
         var (logs, goal) = await LoadAsync(log.UserId);
-        return Summarize(logs, goal);
+        return Summarize(logs, goal, await DayStartAsync(log.UserId));
     }
 
     private async Task<(List<SleepLog> logs, int goal)> LoadAsync(Guid userId)
@@ -311,7 +311,25 @@ public class SleepController(
         return (logs, goal > 0 ? goal : 480);
     }
 
-    private static SleepSummaryDto Summarize(List<SleepLog> logs, int goal)
+    /// <summary>Chốt ngày: đặt mốc mới để % hôm nay bắt đầu lại từ 0 (người dùng chủ động tạo ngày mới).</summary>
+    [HttpPost("close-day")]
+    public async Task<ActionResult<SleepSummaryDto>> CloseDay()
+    {
+        var userId = User.GetUserId();
+        var user = await db.Users.FindAsync(userId);
+        if (user is null) return NotFound();
+        user.SleepDayStartAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var (logs, goal) = await LoadAsync(userId);
+        return Summarize(logs, goal, user.SleepDayStartAt);
+    }
+
+    /// <summary>Mốc "chốt ngày" của người dùng (null = chưa chốt lần nào).</summary>
+    private async Task<DateTime?> DayStartAsync(Guid userId) =>
+        await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.SleepDayStartAt).FirstOrDefaultAsync();
+
+    private static SleepSummaryDto Summarize(List<SleepLog> logs, int goal, DateTime? dayStart = null)
     {
         // Chỉ tính số giờ của đêm đã được duyệt (hoặc không cần duyệt).
         var approved = logs.Where(l => l.Status == "approved").ToList();
@@ -328,12 +346,17 @@ public class SleepController(
             else break;
         }
 
-        // Tổng ngủ hôm nay: cộng mọi giấc (kể cả giấc đang chạy tính tới hiện tại) → % sáng dần.
+        // Tổng ngủ hôm nay: cộng mọi giấc trong ngày (kể cả đang chạy và CHỜ DUYỆT — chỉ bỏ phiếu bị
+        // từ chối). Nhờ vậy kết thúc giấc không bị reset về 0 trong lúc chờ partner.
         var today = DateOnly.FromDateTime(DateTime.Today);
         var minutesToday = 0;
-        foreach (var log in logs.Where(l => l.Date == today || (l.StartedAtUtc is not null && DateOnly.FromDateTime(l.StartedAtUtc.Value.ToLocalTime()) == today)))
+        foreach (var log in logs)
         {
             if (log.Status == "rejected") continue;
+            var startedLocal = (log.StartedAtUtc ?? log.CreatedAt).ToLocalTime();
+            var belongsToday = log.Date == today || DateOnly.FromDateTime(startedLocal) == today;
+            if (!belongsToday) continue;
+            if (dayStart is { } boundary && log.CreatedAt < boundary) continue; // đã chốt ngày → bỏ giấc cũ
             minutesToday += log.Status == "sleeping" && log.StartedAtUtc is { } started
                 ? Math.Max(0, (int)Math.Round((DateTime.UtcNow - started).TotalMinutes))
                 : log.Minutes;

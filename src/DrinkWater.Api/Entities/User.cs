@@ -30,6 +30,9 @@ public class User
     /// <summary>Người duyệt ảnh minh chứng của tôi. Null = không cần duyệt.</summary>
     public Guid? PartnerId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Mốc "chốt ngày" của giấc ngủ: chỉ các giấc sau mốc này mới tính vào % hôm nay.</summary>
+    public DateTime? SleepDayStartAt { get; set; }
     /// <summary>Ảnh bìa trang cá nhân: đường dẫn upload, hoặc "preset:<id>" cho nền dựng sẵn.</summary>
     public string? CoverUrl { get; set; }
 
