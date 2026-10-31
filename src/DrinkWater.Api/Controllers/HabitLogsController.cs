@@ -66,14 +66,21 @@ public class HabitLogsController(
         // Chỉ phiếu đã duyệt mới được cộng vào chỉ tiêu (phiếu chờ duyệt hiện riêng).
         // Bữa ăn: chỉ 3 bữa chính (sáng/trưa/tối) được tính, mỗi bữa tối đa 1 lần/ngày;
         // bữa phụ / ăn vặt vẫn ghi nhận nhưng không cộng %.
-        var done = kind == "meal"
-            ? MealSlots.Count(slot => logs.Any(l => l.MealSlot == slot && l.Status == "approved"))
-            : logs.Count(l => l.Status == "approved");
+        var done = kind switch
+        {
+            "meal" => MealSlots.Count(slot => logs.Any(l => l.MealSlot == slot && l.Status == "approved")),
+            // Thuốc giống bữa ăn: 3 ca sáng/trưa/tối, mỗi ca duyệt xong cộng 1/3.
+            "medicine" => MedicineSlots.Count(slot => logs.Any(l => l.MealSlot == slot && l.Status == "approved")),
+            _ => logs.Count(l => l.Status == "approved"),
+        };
         return new HabitDayDto(kind, target, done, logs.Select(ToDto).ToList());
     }
 
     /// <summary>Ba bữa chính được tính % (bữa phụ/ăn vặt chỉ là ghi nhận).</summary>
     private static readonly string[] MealSlots = ["breakfast", "lunch", "dinner"];
+
+    /// <summary>Ba ca uống thuốc được tính % (sáng / trưa / tối).</summary>
+    private static readonly string[] MedicineSlots = ["morning", "noon", "night"];
 
     /// <summary>Ghi một lần (multipart: time, note, photo?, value?) — value chỉ dùng cho cân nặng (gam).</summary>
     [HttpPost("{kind}/logs")]
@@ -118,7 +125,7 @@ public class HabitLogsController(
             Status = needsReview ? "pending" : "approved",
             ReviewedAt = needsReview ? null : DateTime.UtcNow,
             Value = kind == "weight" ? value : null,
-            MealSlot = kind == "meal" ? NormalizeMealSlot(mealSlot) : null,
+            MealSlot = kind == "meal" ? NormalizeMealSlot(mealSlot) : kind == "medicine" ? NormalizeMedicineSlot(mealSlot) : null,
         };
         db.HabitLogs.Add(log);
 
@@ -235,6 +242,12 @@ public class HabitLogsController(
     {
         "breakfast" or "lunch" or "dinner" or "snack" or "extra" => slot!.Trim().ToLowerInvariant(),
         _ => "lunch"
+    };
+
+    private static string NormalizeMedicineSlot(string? slot) => slot?.Trim().ToLowerInvariant() switch
+    {
+        "morning" or "noon" or "night" => slot!.Trim().ToLowerInvariant(),
+        _ => "morning"
     };
 
     private static int ToMinutes(string hhmm)
