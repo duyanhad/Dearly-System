@@ -307,12 +307,15 @@ public class ChatController(
             db.MessageReactions.Add(new MessageReaction { MessageId = messageId, UserId = me, Emoji = emoji });
         await db.SaveChangesAsync(ct);
 
-        var reactions = await db.MessageReactions.AsNoTracking()
+        // GroupBy dịch sang SQL không hỗ trợ Any() → kéo về rồi nhóm trong bộ nhớ.
+        var rows = await db.MessageReactions.AsNoTracking()
             .Where(r => r.MessageId == messageId)
+            .ToListAsync(ct);
+        var reactions = rows
             .GroupBy(r => r.Emoji)
             .Select(g => new ReactionDto(g.Key, g.Count(), g.Any(r => r.UserId == me)))
             .OrderByDescending(r => r.Count)
-            .ToListAsync(ct);
+            .ToList();
 
         var other = message.SenderId == me ? message.ReceiverId : message.SenderId;
         await hub.Clients.User(other.ToString()).SendAsync("ReceiveReaction", new { MessageId = messageId, Reactions = reactions }, ct);
