@@ -183,9 +183,15 @@ public class SleepController(
 
         var bed = sleeping ? existing!.BedMinutes : ToMinutes(bedTime!);
         var wake = ToMinutes(wakeTime);
-        var minutes = wake - bed;
-        if (minutes <= 0) minutes += 1440; // ngủ qua nửa đêm
-        if (minutes > 1080) return Problem(statusCode: 400, title: "Một đêm ngủ tối đa 18 giờ");
+        // Đang ngủ: tính theo mốc bắt đầu thật (server giữ), không theo giờ hẹn đi ngủ.
+        var minutes = sleeping
+            ? Math.Clamp((int)Math.Round((DateTime.UtcNow - (existing!.StartedAtUtc ?? existing.CreatedAt)).TotalMinutes), 1, 1080)
+            : wake - bed;
+        if (!sleeping)
+        {
+            if (minutes <= 0) minutes += 1440; // ngủ qua nửa đêm
+            if (minutes > 1080) return Problem(statusCode: 400, title: "Một đêm ngủ tối đa 18 giờ");
+        }
 
         string? photoUrl = null;
         if (photo is { Length: > 0 })
@@ -215,6 +221,7 @@ public class SleepController(
         log.BedMinutes = bed;
         log.WakeMinutes = wake;
         log.Minutes = minutes;
+        if (sleeping) log.EndedAtUtc = DateTime.UtcNow;
         log.Note = (note ?? string.Empty).Trim();
         if (photoUrl is not null) log.PhotoUrl = photoUrl;
         if (wakePhotoUrl is not null) log.WakePhotoUrl = wakePhotoUrl;
