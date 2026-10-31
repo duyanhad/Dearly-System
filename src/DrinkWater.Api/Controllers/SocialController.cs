@@ -412,7 +412,7 @@ public class SocialController(
     }
 
     [HttpPost("nudge/{userId:guid}")]
-    public async Task<ActionResult<NudgeResultDto>> Nudge(Guid userId)
+    public async Task<ActionResult<NudgeResultDto>> Nudge(Guid userId, [FromBody] NudgeRequest? req = null)
     {
         var me = User.GetUserId();
         if (!SocialService.IsValidFollow(me, userId))
@@ -435,12 +435,25 @@ public class SocialController(
             .Select(u => u.FullName)
             .FirstAsync();
 
+        // Loại nhắc: mỗi nhu cầu một tiêu đề riêng, kèm lời nhắn tự soạn (nếu có).
+        var (title, action) = req?.Kind switch
+        {
+            "meal" => ("Nhắc bạn ăn uống", "nhắc bạn ăn uống đấy!"),
+            "medicine" => ("Nhắc bạn uống thuốc", "nhắc bạn uống thuốc đấy!"),
+            "study" => ("Nhắc bạn học tập", "nhắc bạn học bài đấy!"),
+            "sleep" => ("Nhắc bạn đi ngủ", "nhắc bạn đi ngủ đấy!"),
+            "weight" => ("Nhắc bạn ghi cân nặng", "nhắc bạn ghi cân nặng đấy!"),
+            _ => ("Nhắc bạn uống nước", "nhắc bạn uống nước đấy!"),
+        };
+        var custom = (req?.Message ?? string.Empty).Trim();
+        if (custom.Length > 200) custom = custom[..200];
+
         var notification = new Notification
         {
             SenderId = me,
             ReceiverId = userId,
-            Title = "Nhắc bạn uống nước",
-            Message = $"{sender} nhắc bạn uống nước đấy!",
+            Title = title,
+            Message = custom.Length > 0 ? $"{sender}: {custom}" : $"{sender} {action}",
             Type = NotificationTypes.Nudge
         };
         db.Notifications.Add(notification);
