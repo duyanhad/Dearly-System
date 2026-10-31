@@ -428,7 +428,9 @@ public class SleepController(
         l.RejectReason,
         l.StartedAtUtc,
         l.EndedAtUtc,
-        l.PlannedMinutes);
+        l.PlannedMinutes,
+        l.CreatedAt,
+        l.ReviewedAt);
 
     private static int ToMinutes(string hhmm)
     {

@@ -20,7 +20,9 @@ public record HabitLogDto(
     string Status,
     string? RejectReason,
     int? Value,
-    string? MealSlot = null);
+    string? MealSlot = null,
+    DateTime? CreatedAt = null,
+    DateTime? ReviewedAt = null);
 
 public record HabitDayDto(string Kind, int Target, int Done, List<HabitLogDto> Logs);
 
@@ -224,7 +226,9 @@ public class HabitLogsController(
         l.Status,
         l.RejectReason,
         l.Value,
-        l.MealSlot);
+        l.MealSlot,
+        l.CreatedAt,
+        l.ReviewedAt);
 
     /// <summary>Chuẩn hoá loại bữa; giá trị lạ thì coi là bữa chính theo giờ (mặc định "lunch").</summary>
     private static string NormalizeMealSlot(string? slot) => slot?.Trim().ToLowerInvariant() switch

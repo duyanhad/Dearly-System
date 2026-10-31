@@ -14,7 +14,9 @@ public record SleepLogDto(
     string? RejectReason,
     DateTime? StartedAtUtc = null,
     DateTime? EndedAtUtc = null,
-    int PlannedMinutes = 0);
+    int PlannedMinutes = 0,
+    DateTime? CreatedAt = null,
+    DateTime? ReviewedAt = null);
 
 public record SleepSummaryDto(
     int GoalMinutes,
