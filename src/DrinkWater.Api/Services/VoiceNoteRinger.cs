@@ -1,4 +1,5 @@
 ﻿using DrinkWater.Api.Data;
+using DrinkWater.Api.Entities;
 using DrinkWater.Api.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -72,6 +73,19 @@ public sealed class VoiceNoteRinger(
 
             var title = $"Tin nhắn thoại từ {note.Sender.FullName}";
             var body = "Có lời nhắn thoại đang chờ bạn nghe — mở Dearly để nghe ngay.";
+
+            // Lần kêu đầu tiên: ghi vào chuông thông báo để người nhận còn thấy lại về sau.
+            if (note.RingCount == 1)
+            {
+                db.Notifications.Add(new Notification
+                {
+                    SenderId = note.SenderId,
+                    ReceiverId = note.ReceiverId,
+                    Title = title,
+                    Message = body,
+                    Type = NotificationTypes.VoiceNote,
+                });
+            }
 
             await hub.Clients.User(note.ReceiverId.ToString()).SendAsync("ReceiveVoiceNote", new
             {

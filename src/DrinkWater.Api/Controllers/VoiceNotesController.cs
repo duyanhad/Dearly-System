@@ -151,6 +151,22 @@ public class VoiceNotesController(
         return NoContent();
     }
 
+    /// <summary>Hộp thư lời nhắn thoại tôi ĐÃ NHẬN (để xem lại và nghe lại bất cứ lúc nào).</summary>
+    [HttpGet("inbox")]
+    public async Task<List<VoiceNoteDto>> Inbox(CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        return await db.VoiceNotes
+            .AsNoTracking()
+            .Where(v => v.ReceiverId == me)
+            .OrderByDescending(v => v.ScheduledAtUtc)
+            .Take(30)
+            .Select(v => new VoiceNoteDto(
+                v.Id, v.SenderId, v.Sender.FullName, v.Sender.AvatarUrl,
+                v.AudioUrl, v.DurationMs, v.ScheduledAtUtc, v.ListenedAtUtc, v.RingCount))
+            .ToListAsync(ct);
+    }
+
     /// <summary>Danh sách lời nhắn tôi đã hẹn gửi (gần nhất trước).</summary>
     [HttpGet]
     public async Task<List<VoiceNoteDto>> Sent(CancellationToken ct)
