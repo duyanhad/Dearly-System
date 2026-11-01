@@ -23,7 +23,8 @@ public class VoiceNotesController(
     AppDbContext db,
     IImageStorage storage,
     IOptions<StorageOptions> storageOptions,
-    IHubContext<NotificationHub> hub) : ControllerBase
+    IHubContext<NotificationHub> hub,
+    IClock clock) : ControllerBase
 {
     private const int MaxVoiceBytes = 5 * 1024 * 1024;
 
@@ -82,10 +83,25 @@ public class VoiceNotesController(
         db.VoiceNotes.Add(row);
         await db.SaveChangesAsync(ct);
 
-        var me2 = await db.Users.AsNoTracking().Where(u => u.Id == me)
+        var sender = await db.Users.AsNoTracking().Where(u => u.Id == me)
             .Select(u => new { u.FullName, u.AvatarUrl }).FirstAsync(ct);
+        var receiverName = await db.Users.AsNoTracking().Where(u => u.Id == receiverId)
+            .Select(u => u.FullName).FirstAsync(ct);
 
-        return new VoiceNoteDto(row.Id, me, me2.FullName, me2.AvatarUrl, row.AudioUrl,
+        // Xác nhận cho CHÍNH người gửi: biết đã hẹn được chưa và hẹn lúc nào.
+        // Dùng độ lệch của AppClock để đúng múi giờ cấu hình, không hard-code.
+        var localWhen = when + (clock.LocalNow - clock.UtcNow);
+        db.Notifications.Add(new Notification
+        {
+            SenderId = null,
+            ReceiverId = me,
+            Title = "Đã hẹn gửi lời nhắn thoại",
+            Message = $"Sẽ gửi tới {receiverName} lúc {localWhen:HH:mm} ngày {localWhen:dd/MM}. Vào Cá nhân → Hẹn lời nhắn thoại để huỷ nếu đổi ý.",
+            Type = NotificationTypes.VoiceNote,
+        });
+        await db.SaveChangesAsync(ct);
+
+        return new VoiceNoteDto(row.Id, me, sender.FullName, sender.AvatarUrl, row.AudioUrl,
             row.DurationMs, row.ScheduledAtUtc, null, 0);
     }
 

@@ -37,6 +37,8 @@ public static class NotificationTypes
     public const string Proof = "Proof";
     /// <summary>Người nhận phản hồi lại một thông báo (vd: phản hồi ảnh đã duyệt).</summary>
     public const string Reply = "Reply";
+    /// <summary>Lời nhắn thoại hẹn giờ (đã hẹn gửi hoặc đang kêu).</summary>
+    public const string VoiceNote = "VoiceNote";
 }
 
 public static class ReminderStyles
