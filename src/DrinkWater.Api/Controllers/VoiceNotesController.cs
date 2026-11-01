@@ -48,6 +48,7 @@ public class VoiceNotesController(
         [FromForm] DateTime scheduledAtUtc,
         [FromForm] int durationMs,
         IFormFile? audio,
+        [FromForm] int? replyToId,
         CancellationToken ct)
     {
         var me = User.GetUserId();
@@ -70,6 +71,20 @@ public class VoiceNotesController(
         if (when < DateTime.UtcNow.AddMinutes(-1))
             return Problem(statusCode: 400, title: "Giờ hẹn phải ở tương lai");
 
+        // Trả lời lời nhắn khác: tối đa 2 vòng (gốc -> trả lời -> trả lời lại).
+        int round = 0;
+        int? rootId = null;
+        if (replyToId is { } rid)
+        {
+            var parent = await db.VoiceNotes.AsNoTracking().FirstOrDefaultAsync(v => v.Id == rid, ct);
+            if (parent is null) return NotFound();
+            if (parent.ReceiverId != me)
+                return Problem(statusCode: 403, title: "Không phải lời nhắn gửi cho bạn");
+            round = parent.Round + 1;
+            if (round > 2) return Problem(statusCode: 400, title: "Chỉ trả lời được 2 vòng");
+            rootId = parent.RootId ?? parent.Id;
+        }
+
         await using var stream = audio.OpenReadStream();
         var url = await storage.SaveAsync(stream, VoiceExtension(audio.ContentType)!, ct);
 
@@ -80,6 +95,8 @@ public class VoiceNotesController(
             AudioUrl = url,
             DurationMs = Math.Clamp(durationMs, 0, 120_000),
             ScheduledAtUtc = when,
+            Round = round,
+            RootId = rootId,
         };
         db.VoiceNotes.Add(row);
         await db.SaveChangesAsync(ct);
@@ -103,7 +120,7 @@ public class VoiceNotesController(
         await db.SaveChangesAsync(ct);
 
         return new VoiceNoteDto(row.Id, me, sender.FullName, sender.AvatarUrl, row.AudioUrl,
-            row.DurationMs, row.ScheduledAtUtc, null, 0);
+            row.DurationMs, row.ScheduledAtUtc, null, 0, row.Round);
     }
 
     /// <summary>Lời nhắn đã tới giờ mà tôi chưa nghe (để app bật màn hình kêu).</summary>
@@ -121,7 +138,7 @@ public class VoiceNotesController(
             .Take(3)
             .Select(v => new VoiceNoteDto(
                 v.Id, v.SenderId, v.Sender.FullName, v.Sender.AvatarUrl,
-                v.AudioUrl, v.DurationMs, v.ScheduledAtUtc, v.ListenedAtUtc, v.RingCount))
+                v.AudioUrl, v.DurationMs, v.ScheduledAtUtc, v.ListenedAtUtc, v.RingCount, v.Round))
             .ToListAsync(ct);
     }
 
@@ -163,7 +180,7 @@ public class VoiceNotesController(
             .Take(30)
             .Select(v => new VoiceNoteDto(
                 v.Id, v.SenderId, v.Sender.FullName, v.Sender.AvatarUrl,
-                v.AudioUrl, v.DurationMs, v.ScheduledAtUtc, v.ListenedAtUtc, v.RingCount))
+                v.AudioUrl, v.DurationMs, v.ScheduledAtUtc, v.ListenedAtUtc, v.RingCount, v.Round))
             .ToListAsync(ct);
     }
 
@@ -179,7 +196,7 @@ public class VoiceNotesController(
             .Take(20)
             .Select(v => new VoiceNoteDto(
                 v.Id, v.SenderId, v.Receiver.FullName, v.Receiver.AvatarUrl,
-                v.AudioUrl, v.DurationMs, v.ScheduledAtUtc, v.ListenedAtUtc, v.RingCount))
+                v.AudioUrl, v.DurationMs, v.ScheduledAtUtc, v.ListenedAtUtc, v.RingCount, v.Round))
             .ToListAsync(ct);
     }
 }

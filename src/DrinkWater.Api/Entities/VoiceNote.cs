@@ -23,6 +23,11 @@ public class VoiceNote
 
     public int RingCount { get; set; }
 
+    /// <summary>Lời nhắn gốc của chuỗi trả lời (null nếu đây là lời nhắn đầu tiên).</summary>
+    public int? RootId { get; set; }
+    /// <summary>Vòng trả lời: 0 = lời nhắn gốc, 1 = trả lời, 2 = trả lời lại (tối đa 2 vòng).</summary>
+    public int Round { get; set; }
+
     /// <summary>Người gửi huỷ hoặc hệ thống dừng sau khi kêu quá lâu.</summary>
     public bool Cancelled { get; set; }
 

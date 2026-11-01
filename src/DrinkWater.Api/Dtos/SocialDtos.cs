@@ -23,7 +23,7 @@ public record NudgeRequest(string? Kind, string? Message);
 
 public record NotificationDto(
     int Id, Guid? SenderId, string Title, string Message, string? ImageUrl,
-    string Type, bool IsRead, DateTime CreatedAt);
+    string Type, bool IsRead, DateTime CreatedAt, int ReplyRound = 0);
 
 public record BroadcastRequest(
     [Required, MaxLength(100)] string Title,

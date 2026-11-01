@@ -596,6 +596,12 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<Guid?>("ReceiverId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("ReplyRootId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReplyRound")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("SenderId")
                         .HasColumnType("uuid");
 
@@ -925,6 +931,12 @@ namespace DrinkWater.Api.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("RingCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RootId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Round")
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("ScheduledAtUtc")

@@ -88,6 +88,11 @@ public class Notification
     public string Type { get; set; } = NotificationTypes.Broadcast;
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Thông báo gốc của chuỗi trả lời (null nếu đây là thông báo gốc).</summary>
+    public int? ReplyRootId { get; set; }
+    /// <summary>Vòng trả lời: 1 = trả lời thông báo gốc, 2 = trả lời lại lần nữa (tối đa 2 vòng).</summary>
+    public int ReplyRound { get; set; }
 }
 
 public class SystemLog

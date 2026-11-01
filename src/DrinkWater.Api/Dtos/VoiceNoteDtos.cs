@@ -12,6 +12,7 @@ public record VoiceNoteDto(
     int DurationMs,
     DateTime ScheduledAtUtc,
     DateTime? ListenedAtUtc,
-    int RingCount);
+    int RingCount,
+    int Round = 0);
 
 public record CreateVoiceNoteForm(Guid ReceiverId, DateTime ScheduledAtUtc, int DurationMs);

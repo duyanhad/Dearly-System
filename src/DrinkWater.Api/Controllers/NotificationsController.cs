@@ -34,7 +34,7 @@ public class NotificationsController(
             .OrderByDescending(n => n.Id)
             .Take(limit)
             .Select(n => new NotificationDto(
-                n.Id, n.SenderId, n.Title, n.Message, n.ImageUrl, n.Type, n.IsRead, n.CreatedAt))
+                n.Id, n.SenderId, n.Title, n.Message, n.ImageUrl, n.Type, n.IsRead, n.CreatedAt, n.ReplyRound))
             .ToListAsync();
     }
 
@@ -74,6 +74,10 @@ public class NotificationsController(
             .FirstOrDefaultAsync(n => n.Id == id && n.ReceiverId == me && n.SenderId != null);
         if (source is null) return NotFound();
 
+        // Mỗi cuộc trao đổi chỉ 2 vòng: gốc → trả lời (1) → trả lời lại (2) là hết.
+        var round = source.Type == NotificationTypes.Reply ? source.ReplyRound + 1 : 1;
+        if (round > 2) return Problem(statusCode: 400, title: "Chỉ trả lời được 2 vòng");
+
         var myName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync();
         var row = new Notification
         {
@@ -82,6 +86,8 @@ public class NotificationsController(
             Title = "Phản hồi từ " + myName,
             Message = $"Về \"{source.Title}\": {text}",
             Type = NotificationTypes.Reply,
+            ReplyRootId = source.ReplyRootId ?? source.Id,
+            ReplyRound = round,
         };
         db.Notifications.Add(row);
 
@@ -101,6 +107,6 @@ public class NotificationsController(
         }
 
         return new NotificationDto(row.Id, row.SenderId, row.Title, row.Message, row.ImageUrl,
-            row.Type, row.IsRead, row.CreatedAt);
+            row.Type, row.IsRead, row.CreatedAt, row.ReplyRound);
     }
 }
