@@ -14,7 +14,7 @@ public record CupRequest(
     [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.MaxLength(50)] string Name,
     [System.ComponentModel.DataAnnotations.Range(1, 5000)] int VolumeMl);
 
-public record CupDto(int Id, string Name, int VolumeMl, string? ImageUrl, bool IsDefault, string? CutoutUrl = null);
+public record CupDto(int Id, string Name, int VolumeMl, string? ImageUrl, bool IsDefault, string? CutoutUrl = null, bool IsCatalog = false);
 
 [ApiController]
 [Authorize]
@@ -32,10 +32,11 @@ public class CupsController(
     {
         var me = User.GetUserId();
         var cups = await db.CupPresets
-            .Where(c => c.UserId == me)
-            .OrderByDescending(c => c.IsDefault)
+            .Where(c => c.UserId == me || c.UserId == null)
+            .OrderByDescending(c => c.UserId == me)
+            .ThenByDescending(c => c.IsDefault)
             .ThenBy(c => c.VolumeMl)
-            .Select(c => new CupDto(c.Id, c.Name, c.VolumeMl, c.ImageUrl, c.IsDefault, c.CutoutUrl))
+            .Select(c => new CupDto(c.Id, c.Name, c.VolumeMl, c.ImageUrl, c.IsDefault, c.CutoutUrl, c.UserId == null))
             .ToListAsync();
 
         // Ảnh cũ chưa có bản tách nền → nhờ rembg chạy nền, lần tải sau client nhận PNG sẵn
@@ -48,6 +49,38 @@ public class CupsController(
             });
 
         return cups;
+    }
+
+    /// <summary>Chọn cốc mẫu từ catalog: sao chép thành cốc của người dùng và đặt mặc định.</summary>
+    [HttpPost("{id:int}/adopt")]
+    public async Task<ActionResult<CupDto>> Adopt(int id)
+    {
+        var me = User.GetUserId();
+        var cup = await db.CupPresets.FirstOrDefaultAsync(c => c.Id == id);
+        if (cup is null) return NotFound();
+
+        if (cup.UserId == me)
+        {
+            await db.CupPresets.Where(c => c.UserId == me && c.IsDefault).ExecuteUpdateAsync(s => s.SetProperty(c => c.IsDefault, false));
+            cup.IsDefault = true;
+            await db.SaveChangesAsync();
+            return new CupDto(cup.Id, cup.Name, cup.VolumeMl, cup.ImageUrl, cup.IsDefault, cup.CutoutUrl, false);
+        }
+        if (cup.UserId is not null) return Problem(statusCode: 403, title: "Cốc của người khác");
+
+        await db.CupPresets.Where(c => c.UserId == me && c.IsDefault).ExecuteUpdateAsync(s => s.SetProperty(c => c.IsDefault, false));
+        var mine = new CupPreset
+        {
+            UserId = me,
+            Name = cup.Name,
+            VolumeMl = cup.VolumeMl,
+            ImageUrl = cup.ImageUrl,
+            CutoutUrl = cup.CutoutUrl,
+            IsDefault = true,
+        };
+        db.CupPresets.Add(mine);
+        await db.SaveChangesAsync();
+        return new CupDto(mine.Id, mine.Name, mine.VolumeMl, mine.ImageUrl, mine.IsDefault, mine.CutoutUrl, false);
     }
 
     // Mỗi user chỉ chạy một lượt tách nền, tránh gọi rembg trùng lặp khi client tải lại nhiều lần.

@@ -25,7 +25,8 @@ public class FriendNickname
 public class CupPreset
 {
     public int Id { get; set; }
-    public Guid UserId { get; set; }
+    /// <summary>null = cốc mẫu do admin tạo (catalog chung cho mọi người dùng).</summary>
+    public Guid? UserId { get; set; }
     public string Name { get; set; } = string.Empty;
     public int VolumeMl { get; set; }
 
