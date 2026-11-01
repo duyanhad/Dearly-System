@@ -303,7 +303,7 @@ public class SocialController(
         var today = DateOnly.FromDateTime(DateTime.Today);
         var needs = new List<PartnerNeedDto>();
         int PercentOf(int done, int target) =>
-            target <= 0 ? 0 : Math.Clamp((int)Math.Round(done * 100.0 / target), 0, 100);
+            target <= 0 ? 0 : (int)Math.Round(done * 100.0 / target, MidpointRounding.AwayFromZero);
 
         var waterToday = await water.GetTodayAsync(userId);
         needs.Add(new("water", waterToday.TargetMl, waterToday.TotalDrankMl,

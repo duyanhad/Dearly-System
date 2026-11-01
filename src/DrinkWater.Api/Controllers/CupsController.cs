@@ -155,10 +155,11 @@ public class CupsController(
     /// <summary>?nh c?c d�ng l�m texture cho ly 3D.</summary>
     [HttpPut("{id:int}/image")]
     [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
-    public async Task<ActionResult<CupDto>> UploadImage(int id, IFormFile image)
+    public async Task<ActionResult<CupDto>> UploadImage(int id, IFormFile? image, IFormFile? cutout)
     {
         var cup = await Find(id);
         if (cup is null) return NotFound();
+        if (image is null || image.Length == 0) return Problem(statusCode: 400, title: "Chưa chọn ảnh");
 
         var (extension, error) = await ImageUpload.PrepareAsync(image, storageOptions.Value.MaxBytes);
         if (error is not null) return Problem(statusCode: 400, title: error);
@@ -170,6 +171,16 @@ public class CupsController(
         // người dùng không phải tải model AI về máy.
         cup.CutoutUrl = null;
         await db.SaveChangesAsync();
+
+        // Cloud không chạy rembg → client gửi kèm PNG đã tách nền (giống ảnh vật thể).
+        // Lưu sẵn để MỌI thiết bị (chủ cốc và partner) hiện đúng một ảnh, không phải tách lại.
+        if (cutout is { Length: > 0 })
+        {
+            using var cutStream = cutout.OpenReadStream();
+            cup.CutoutUrl = await storage.SaveAsync(cutStream, ".png");
+            await db.SaveChangesAsync();
+            return new CupDto(cup.Id, cup.Name, cup.VolumeMl, cup.ImageUrl, cup.IsDefault, cup.CutoutUrl);
+        }
 
         using (var buffer = new MemoryStream())
         {

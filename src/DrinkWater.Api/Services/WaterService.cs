@@ -7,8 +7,9 @@ namespace DrinkWater.Api.Services;
 
 public sealed class WaterService(AppDbContext db, IClock clock)
 {
+    /// <summary>Phần trăm hoàn thành — làm tròn nửa lên để trang Hôm nay và trang Partner luôn khớp nhau.</summary>
     public static int Percent(int drankMl, int targetMl) =>
-        targetMl <= 0 ? 0 : drankMl * 100 / targetMl;
+        targetMl <= 0 ? 0 : (int)Math.Round(drankMl * 100.0 / targetMl, MidpointRounding.AwayFromZero);
 
     public async Task<WaterLog> AddLogAsync(
         Guid userId, int amountMl, string? period, string? imageUrl, string? note)
