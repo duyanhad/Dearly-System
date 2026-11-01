@@ -180,8 +180,7 @@ public class ChatController(
         }, ct);
 
         // Push chạy nền để phản hồi gửi tin không phải chờ dịch vụ push.
-        _ = webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới", "Đã gửi một tin nhắn thoại 🎤",
-            "normal");
+        webPush.QueueForUser(userId, sender.FullName ?? "Tin nhắn mới", "Đã gửi một tin nhắn thoại 🎤", "normal");
 
         return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null,
             message.AudioUrl, message.AudioDurationMs, message.ImageUrl, []);
@@ -239,7 +238,7 @@ public class ChatController(
         }, ct);
 
         // Web Push để người nhận thấy tin nhắn cả khi đã đóng app / tắt màn hình (chạy nền cho nhanh).
-        _ = webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới",
+        webPush.QueueForUser(userId, sender.FullName ?? "Tin nhắn mới",
             body.Length > 120 ? body[..120] + "…" : body, "normal");
 
         return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null,
@@ -283,7 +282,7 @@ public class ChatController(
             message.CreatedAt
         }, ct);
 
-        _ = webPush.SendToUserAsync(userId, sender.FullName ?? "Tin nhắn mới", "Đã gửi một bức ảnh 🖼️", "normal");
+        webPush.QueueForUser(userId, sender.FullName ?? "Tin nhắn mới", "Đã gửi một bức ảnh 🖼️", "normal");
 
         return new MessageDto(message.Id, true, message.Body, message.CreatedAt, null,
             null, null, message.ImageUrl, []);

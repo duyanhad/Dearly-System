@@ -12,6 +12,9 @@ public interface IWebPushSender
     /// <summary>Gửi tới mọi thiết bị đã đăng ký của người dùng. Trả về số thiết bị đã gửi được.</summary>
     Task<int> SendToUserAsync(
         Guid userId, string title, string body, string? style = null, int? tagId = null, CancellationToken ct = default);
+
+    /// <summary>Gửi nền sau khi request kết thúc (tự tạo scope riêng nên không lỗi DbContext đã dispose).</summary>
+    void QueueForUser(Guid userId, string title, string body, string? style = null);
 }
 
 /// <summary>
@@ -22,9 +25,27 @@ public interface IWebPushSender
 public sealed class WebPushSender(
     AppDbContext db,
     IOptions<WebPushOptions> options,
-    ILogger<WebPushSender> log) : IWebPushSender
+    ILogger<WebPushSender> log,
+    IServiceScopeFactory scopeFactory) : IWebPushSender
 {
     private readonly WebPushOptions _options = options.Value;
+
+    public void QueueForUser(Guid userId, string title, string body, string? style = null)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var sender = scope.ServiceProvider.GetRequiredService<IWebPushSender>();
+                await sender.SendToUserAsync(userId, title, body, style);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Push nền lỗi cho {User}", userId);
+            }
+        });
+    }
 
     public async Task<int> SendToUserAsync(
         Guid userId, string title, string body, string? style = null, int? tagId = null, CancellationToken ct = default)

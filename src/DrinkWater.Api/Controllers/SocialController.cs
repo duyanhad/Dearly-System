@@ -471,13 +471,10 @@ public class SocialController(
         if (online)
             await hub.Clients.User(userId.ToString()).SendAsync("ReceiveNudge", payload);
 
-        if (!online)
-            await push.SendAsync(target.FCMToken, notification.Title, notification.Message);
+        // Push chạy nền (scope riêng) để nút nhắc phản hồi tức thì thay vì chờ dịch vụ push.
+        webPush.QueueForUser(userId, notification.Title, notification.Message, ReminderStyles.Normal);
 
-        // Web Push: nhắc tới cả khi app/tab đã đóng (kèm rung theo mẫu "normal" trong service worker).
-        var webPushSent = await webPush.SendToUserAsync(userId, notification.Title, notification.Message, ReminderStyles.Normal);
-
-        return new NudgeResultDto(online, !online || webPushSent > 0);
+        return new NudgeResultDto(online, true);
     }
 }
 
