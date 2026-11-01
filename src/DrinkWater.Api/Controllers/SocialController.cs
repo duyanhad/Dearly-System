@@ -234,13 +234,15 @@ public class SocialController(
 
         foreach (var kind in new[] { "medicine", "meal", "study" })
         {
-            var target = settings.FirstOrDefault(s => s.Kind == kind)?.TargetValue ?? 0;
+            var settingRow = settings.FirstOrDefault(s => s.Kind == kind);
+            // Người dùng tắt nhu cầu nào thì bên partner cũng ẩn nhu cầu đó.
+            if (settingRow is { Enabled: false }) continue;
+            var target = settingRow?.TargetValue ?? 0;
             if (target <= 0) target = kind == "study" ? 2 : 3;
             var done = logs.Count(l => l.Kind == kind && l.Status == "approved");
-            var setting = settings.FirstOrDefault(s => s.Kind == kind);
             needs.Add(new(kind, target, done, PercentOf(done, target), 0,
                 logs.Count(l => l.Kind == kind && l.Status == "pending"),
-                setting?.ImageUrl, setting?.CutoutUrl));
+                settingRow?.ImageUrl, settingRow?.CutoutUrl));
         }
 
         // Giấc ngủ: mục tiêu là số phút ngủ trong ngày; cộng cả giấc đang chạy + chờ duyệt để partner
@@ -263,13 +265,18 @@ public class SocialController(
                 ? Math.Max(0, (int)Math.Round((DateTime.UtcNow - started).TotalMinutes))
                 : l.Minutes);
         var sleepSetting = settings.FirstOrDefault(s => s.Kind == "sleep");
-        needs.Add(new("sleep", sleepTarget, slept, PercentOf(slept, sleepTarget), 0,
-            nights.Count(l => l.Status == "pending"),
-            sleepSetting?.ImageUrl, sleepSetting?.CutoutUrl,
-            running is not null));
+        if (sleepSetting is not { Enabled: false })
+        {
+            needs.Add(new("sleep", sleepTarget, slept, PercentOf(slept, sleepTarget), 0,
+                nights.Count(l => l.Status == "pending"),
+                sleepSetting?.ImageUrl, sleepSetting?.CutoutUrl,
+                running is not null));
+        }
 
         // Cân nặng: % tính từ mốc ban đầu → mục tiêu, giống trang cân nặng của họ.
         var weight = settings.FirstOrDefault(s => s.Kind == "weight");
+        if (weight is not { Enabled: false })
+        {
         var goal = weight?.TargetValue is > 0 ? weight.TargetValue : 60000;
         var latest = await db.HabitLogs.AsNoTracking()
             .Where(l => l.UserId == userId && l.Kind == "weight" && l.Status == "approved" && l.Value != null)
@@ -286,6 +293,7 @@ public class SocialController(
         needs.Add(new("weight", goal, latest, weightPercent, 0,
             logs.Count(l => l.Kind == "weight" && l.Status == "pending"),
             weight?.ImageUrl, weight?.CutoutUrl));
+        }
 
         return needs;
     }
