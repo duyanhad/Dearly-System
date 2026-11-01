@@ -249,6 +249,17 @@ public class SocialController(
         return NoContent();
     }
 
+    /// <summary>Phiếu đã duyệt / từ chối của người mình duyệt (kèm giờ duyệt) để xem lại.</summary>
+    [HttpGet("partner/clients/{userId:guid}/reviewed")]
+    public async Task<ActionResult<List<ReviewedProofDto>>> ClientReviewed(
+        Guid userId, [FromQuery] string kind = "water", [FromQuery] int take = 20)
+    {
+        var me = User.GetUserId();
+        var isClient = await db.Users.AnyAsync(u => u.Id == userId && (u.PartnerId == me || u.PendingPartnerId == me));
+        if (!isClient) return Problem(statusCode: 403, title: "Bạn không phải partner của người này");
+        return await social.ReviewedProofsAsync(userId, kind, take);
+    }
+
     /// <summary>Tiến độ hôm nay của một người mình duyệt ảnh (dùng cho trang partner).</summary>
     [HttpGet("partner/clients/{userId:guid}/today")]
     public async Task<ActionResult<TodayDto>> ClientToday(Guid userId)

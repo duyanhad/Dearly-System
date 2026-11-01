@@ -97,4 +97,18 @@ public record FriendDto(
 /// <summary>Người tôi xin duyệt ảnh (chờ đồng ý) hoặc người xin tôi duyệt ảnh.</summary>
 public record PartnerRequestDto(Guid Id, string FullName, string? AvatarUrl, string? Nickname = null);
 
+/// <summary>Phiếu đã duyệt / đã từ chối, kèm giờ duyệt — để xem lại ảnh ở trang Partner.</summary>
+public record ReviewedProofDto(
+    string Id,
+    string Kind,
+    int AmountMl,
+    string Period,
+    string? ImageUrl,
+    string? Note,
+    DateTime LogTime,
+    DateTime? ReviewedAt,
+    bool Approved,
+    string? RejectReason = null,
+    int? Value = null);
+
 public record SetNicknameRequest([MaxLength(50)] string? Nickname);

@@ -147,6 +147,51 @@ public sealed class SocialService(AppDbContext db, IClock clock)
         return true;
     }
 
+    /// <summary>Phiếu đã duyệt / đã từ chối của một người mình duyệt — xem lại ảnh và giờ duyệt.</summary>
+    public async Task<List<ReviewedProofDto>> ReviewedProofsAsync(Guid clientId, string kind, int take)
+    {
+        var limit = Math.Clamp(take, 1, 50);
+
+        if (kind == "water")
+        {
+            return await db.WaterLogs
+                .AsNoTracking()
+                .Where(l => l.UserId == clientId && l.ReviewedAt != null &&
+                            (l.Status == LogStatuses.Approved || l.Status == LogStatuses.Rejected))
+                .OrderByDescending(l => l.ReviewedAt)
+                .Take(limit)
+                .Select(l => new ReviewedProofDto(
+                    l.Id.ToString(), "water", l.AmountMl, l.Period, l.ImageUrl, l.Note,
+                    l.LogTime, l.ReviewedAt, l.Status == LogStatuses.Approved))
+                .ToListAsync();
+        }
+
+        if (kind == "sleep")
+        {
+            return await db.SleepLogs
+                .AsNoTracking()
+                .Where(l => l.UserId == clientId && l.ReviewedAt != null &&
+                            (l.Status == "approved" || l.Status == "rejected"))
+                .OrderByDescending(l => l.ReviewedAt)
+                .Take(limit)
+                .Select(l => new ReviewedProofDto(
+                    l.Id.ToString(), "sleep", 0, string.Empty, l.PhotoUrl, l.RejectReason,
+                    l.CreatedAt, l.ReviewedAt, l.Status == "approved", l.RejectReason, l.Minutes))
+                .ToListAsync();
+        }
+
+        return await db.HabitLogs
+            .AsNoTracking()
+            .Where(l => l.UserId == clientId && l.Kind == kind && l.ReviewedAt != null &&
+                        (l.Status == "approved" || l.Status == "rejected"))
+            .OrderByDescending(l => l.ReviewedAt)
+            .Take(limit)
+            .Select(l => new ReviewedProofDto(
+                l.Id.ToString(), l.Kind, 0, l.MealSlot ?? string.Empty, l.PhotoUrl, l.Note,
+                l.CreatedAt, l.ReviewedAt, l.Status == "approved", l.RejectReason, l.Value))
+            .ToListAsync();
+    }
+
     /// <summary>Người tôi đã xin làm người duyệt ảnh (đang chờ họ đồng ý). Null nếu không có.</summary>
     public async Task<PartnerRequestDto?> PendingPartnerAsync(Guid me)
     {
