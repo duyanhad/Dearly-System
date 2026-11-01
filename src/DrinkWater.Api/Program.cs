@@ -37,6 +37,7 @@ builder.Services.AddSingleton<IPushSender, LogPushSender>();
 builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection("WebPush"));
 builder.Services.AddScoped<IWebPushSender, WebPushSender>();
 builder.Services.AddHostedService<ReminderService>();
+builder.Services.AddHostedService<SleepReminderService>();
 builder.Services.AddHostedService<VoiceNoteRinger>();
 
 builder.Services.AddSignalR();

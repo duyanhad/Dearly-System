@@ -842,6 +842,9 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<DateTime?>("SleepDayStartAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateOnly?>("SleepReminderDismissedOn")
+                        .HasColumnType("date");
+
                     b.Property<int>("TargetWaterMl")
                         .HasColumnType("integer");
 

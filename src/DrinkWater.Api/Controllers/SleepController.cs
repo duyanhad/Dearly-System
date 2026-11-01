@@ -330,6 +330,18 @@ public class SleepController(
         return (logs, goal > 0 ? goal : 480);
     }
 
+    /// <summary>Tắt nhắc "sắp tới giờ đi ngủ" cho hôm nay (người dùng đã vào bấm tắt).</summary>
+    [HttpPost("reminder/dismiss")]
+    public async Task<IActionResult> DismissReminder()
+    {
+        var user = await db.Users.FindAsync(User.GetUserId());
+        if (user is null) return NotFound();
+
+        user.SleepReminderDismissedOn = DateOnly.FromDateTime(DateTime.Now);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     /// <summary>Chốt ngày: đặt mốc mới để % hôm nay bắt đầu lại từ 0 (người dùng chủ động tạo ngày mới).</summary>
     [HttpPost("close-day")]
     public async Task<ActionResult<SleepSummaryDto>> CloseDay()
