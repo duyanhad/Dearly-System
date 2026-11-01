@@ -28,11 +28,12 @@ public class VoiceNotesController(
 {
     private const int MaxVoiceBytes = 5 * 1024 * 1024;
 
-    private static string? VoiceExtension(string? contentType) => contentType switch
+    private static string? VoiceExtension(string? contentType) => contentType?.Split(';')[0].Trim().ToLowerInvariant() switch
     {
-        "audio/webm" or "audio/webm;codecs=opus" => ".webm",
-        "audio/ogg" or "audio/ogg;codecs=opus" => ".ogg",
-        "audio/mp4" or "audio/mpeg" => ".mp4",
+        "audio/mp4" or "audio/m4a" or "audio/x-m4a" => ".m4a",
+        "audio/webm" => ".webm",
+        "audio/ogg" => ".ogg",
+        "audio/mpeg" => ".mp3",
         "audio/wav" or "audio/x-wav" => ".wav",
         _ => null,
     };
