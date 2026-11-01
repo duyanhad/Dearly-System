@@ -95,6 +95,17 @@ public class SocialController(
         if (rows.Count == 0) return NoContent();
 
         db.Follows.RemoveRange(rows);
+
+        // Xoá bạn bè thì phải bỏ luôn quan hệ partner/duyệt ảnh giữa hai người,
+        // nếu không người đã xoá vẫn nằm trong trang Partner của nhau.
+        var pair = await db.Users.Where(u => u.Id == me || u.Id == userId).ToListAsync();
+        foreach (var u in pair)
+        {
+            var other = u.Id == me ? userId : me;
+            if (u.PartnerId == other) u.PartnerId = null;
+            if (u.PendingPartnerId == other) u.PendingPartnerId = null;
+        }
+
         await db.SaveChangesAsync();
         return NoContent();
     }
