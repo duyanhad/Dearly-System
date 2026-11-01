@@ -35,6 +35,8 @@ public static class NotificationTypes
     public const string Partner = "Partner";
     /// <summary>Phiếu minh chứng mới chờ duyệt.</summary>
     public const string Proof = "Proof";
+    /// <summary>Người nhận phản hồi lại một thông báo (vd: phản hồi ảnh đã duyệt).</summary>
+    public const string Reply = "Reply";
 }
 
 public static class ReminderStyles

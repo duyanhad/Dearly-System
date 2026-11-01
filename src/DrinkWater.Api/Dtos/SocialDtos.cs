@@ -112,3 +112,6 @@ public record ReviewedProofDto(
     int? Value = null);
 
 public record SetNicknameRequest([MaxLength(50)] string? Nickname);
+
+/// <summary>Trả lời lại một thông báo (vd. phản hồi ảnh đã duyệt) — gửi tới người gửi ban đầu.</summary>
+public record ReplyNotificationRequest([Required, MaxLength(300)] string Message);
