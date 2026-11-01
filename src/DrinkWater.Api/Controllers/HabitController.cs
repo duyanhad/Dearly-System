@@ -102,7 +102,7 @@ public class HabitController(
     /// <summary>Tải ảnh "vật thể" của nhu cầu (server tự tách nền để làm hình chính).</summary>
     [HttpPost("{kind}/image")]
     [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
-    public async Task<ActionResult<HabitSettingDto>> UploadImage(string kind, IFormFile? image)
+    public async Task<ActionResult<HabitSettingDto>> UploadImage(string kind, IFormFile? image, IFormFile? cutout)
     {
         if (!HabitSetting.Kinds.Contains(kind)) return Problem(statusCode: 400, title: "Nhu cầu không hợp lệ");
         if (image is null || image.Length == 0) return Problem(statusCode: 400, title: "Chưa chọn ảnh");
@@ -123,6 +123,15 @@ public class HabitController(
 
         row.CutoutUrl = null;
         await db.SaveChangesAsync();
+
+        // Client tự tách nền bằng AI rồi gửi kèm (bản cloud không chạy rembg được).
+        if (cutout is { Length: > 0 })
+        {
+            await using var cutStream = cutout.OpenReadStream();
+            row.CutoutUrl = await storage.SaveAsync(cutStream, ".png");
+            await db.SaveChangesAsync();
+            return ToDto(row);
+        }
 
         using (var buffer = new MemoryStream())
         {
