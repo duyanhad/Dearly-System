@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FriendNickname> FriendNicknames => Set<FriendNickname>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<VoiceNote> VoiceNotes => Set<VoiceNote>();
     public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
     public DbSet<Era> Eras => Set<Era>();
     public DbSet<EraGroup> EraGroups => Set<EraGroup>();
@@ -107,6 +108,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.AudioUrl).HasMaxLength(500);
             e.HasIndex(x => new { x.SenderId, x.ReceiverId, x.CreatedAt });
             e.HasIndex(x => new { x.ReceiverId, x.ReadAt });
+        });
+
+        b.Entity<VoiceNote>(e =>
+        {
+            e.Property(x => x.AudioUrl).HasMaxLength(500).IsRequired();
+            // Vòng kêu chỉ quét note tới giờ của một người → index theo người nhận + giờ hẹn.
+            e.HasIndex(x => new { x.ReceiverId, x.ScheduledAtUtc });
+            e.HasOne(x => x.Sender).WithMany().HasForeignKey(x => x.SenderId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Receiver).WithMany().HasForeignKey(x => x.ReceiverId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<SystemLog>(e =>
