@@ -199,6 +199,56 @@ public class SocialController(
     [HttpGet("partner/me")]
     public Task<MyPartnerDto?> MyPartner() => social.MyPartnerAsync(User.GetUserId());
 
+    /// <summary>Người tôi đã xin duyệt ảnh, đang chờ họ đồng ý (null nếu không có).</summary>
+    [HttpGet("partner/pending")]
+    public Task<PartnerRequestDto?> PendingPartner() => social.PendingPartnerAsync(User.GetUserId());
+
+    /// <summary>Những người đang xin tôi duyệt ảnh minh chứng.</summary>
+    [HttpGet("partner/requests")]
+    public Task<List<PartnerRequestDto>> PartnerRequests() => social.PartnerRequestsAsync(User.GetUserId());
+
+    /// <summary>Đồng ý làm người duyệt ảnh cho người đã xin tôi.</summary>
+    [HttpPost("partner/requests/{userId:guid}/accept")]
+    public async Task<IActionResult> AcceptPartnerRequest(Guid userId)
+    {
+        var me = User.GetUserId();
+        var requester = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PendingPartnerId == me);
+        if (requester is null) return NotFound();
+
+        requester.PendingPartnerId = null;
+        requester.PartnerId = me;
+
+        var myName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync();
+        db.Notifications.Add(new Notification
+        {
+            SenderId = me,
+            ReceiverId = userId,
+            Title = "Đã nhận duyệt ảnh",
+            Message = $"{myName} đồng ý duyệt ảnh cốc nước của bạn.",
+            Type = NotificationTypes.Partner,
+        });
+        await db.SaveChangesAsync();
+
+        await hub.Clients.User(userId.ToString()).SendAsync("ReceiveNudge", new
+        {
+            Title = "Đã nhận duyệt ảnh",
+            Message = $"{myName} đồng ý duyệt ảnh cốc nước của bạn.",
+        });
+        return NoContent();
+    }
+
+    /// <summary>Từ chối làm người duyệt ảnh.</summary>
+    [HttpPost("partner/requests/{userId:guid}/reject")]
+    public async Task<IActionResult> RejectPartnerRequest(Guid userId)
+    {
+        var requester = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PendingPartnerId == User.GetUserId());
+        if (requester is null) return NotFound();
+
+        requester.PendingPartnerId = null;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     /// <summary>Tiến độ hôm nay của một người mình duyệt ảnh (dùng cho trang partner).</summary>
     [HttpGet("partner/clients/{userId:guid}/today")]
     public async Task<ActionResult<TodayDto>> ClientToday(Guid userId)

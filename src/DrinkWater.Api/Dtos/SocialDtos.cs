@@ -90,6 +90,11 @@ public record FriendDto(
     string? AvatarUrl,
     bool IFollow,
     bool TheyFollow,
-    bool IsMyPartner);
+    bool IsMyPartner,
+    // Tôi đã xin người này làm người duyệt ảnh, đang chờ họ đồng ý.
+    bool IsPendingPartner = false);
+
+/// <summary>Người tôi xin duyệt ảnh (chờ đồng ý) hoặc người xin tôi duyệt ảnh.</summary>
+public record PartnerRequestDto(Guid Id, string FullName, string? AvatarUrl, string? Nickname = null);
 
 public record SetNicknameRequest([MaxLength(50)] string? Nickname);

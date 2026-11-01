@@ -29,6 +29,8 @@ public class User
 
     /// <summary>Người duyệt ảnh minh chứng của tôi. Null = không cần duyệt.</summary>
     public Guid? PartnerId { get; set; }
+    /// <summary>Người tôi xin làm người duyệt ảnh, đang chờ họ đồng ý. Null = không có lời mời nào.</summary>
+    public Guid? PendingPartnerId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>Mốc "chốt ngày" của giấc ngủ: chỉ các giấc sau mốc này mới tính vào % hôm nay.</summary>

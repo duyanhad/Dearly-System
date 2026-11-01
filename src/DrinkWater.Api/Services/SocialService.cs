@@ -72,11 +72,13 @@ public sealed class SocialService(AppDbContext db, IClock clock)
 
         if (others.Count == 0) return [];
 
-        // Partner tôi đã chọn (mỗi tài khoản chỉ có 1) → để đánh dấu đúng người trong danh sách.
-        var myPartnerId = await db.Users.AsNoTracking()
+        // Partner tôi đã chọn (mỗi tài khoản chỉ có 1) + người tôi đang xin duyệt ảnh.
+        var myIds = await db.Users.AsNoTracking()
             .Where(u => u.Id == me)
-            .Select(u => u.PartnerId)
+            .Select(u => new { u.PartnerId, u.PendingPartnerId })
             .FirstOrDefaultAsync();
+        var myPartnerId = myIds?.PartnerId;
+        var myPendingId = myIds?.PendingPartnerId;
 
         var users = await db.Users
             .AsNoTracking()
@@ -104,7 +106,8 @@ public sealed class SocialService(AppDbContext db, IClock clock)
                 u.AvatarUrl,
                 mine is not null,
                 theirs is not null,
-                myPartnerId == u.Id);
+                myPartnerId == u.Id,
+                myPendingId == u.Id);
         })
         .OrderBy(f => f.Nickname ?? f.FullName)
         .ToList();
@@ -143,6 +146,37 @@ public sealed class SocialService(AppDbContext db, IClock clock)
         await db.SaveChangesAsync();
         return true;
     }
+
+    /// <summary>Người tôi đã xin làm người duyệt ảnh (đang chờ họ đồng ý). Null nếu không có.</summary>
+    public async Task<PartnerRequestDto?> PendingPartnerAsync(Guid me)
+    {
+        var pendingId = await db.Users.AsNoTracking()
+            .Where(u => u.Id == me)
+            .Select(u => u.PendingPartnerId)
+            .FirstOrDefaultAsync();
+
+        if (pendingId is null) return null;
+
+        return await db.Users.AsNoTracking()
+            .Where(u => u.Id == pendingId)
+            .Select(u => new PartnerRequestDto(
+                u.Id, u.FullName, u.AvatarUrl,
+                db.FriendNicknames.Where(n => n.OwnerId == me && n.TargetId == u.Id)
+                    .Select(n => n.Nickname).FirstOrDefault()))
+            .FirstOrDefaultAsync();
+    }
+
+    /// <summary>Những người đang xin tôi duyệt ảnh minh chứng (chờ tôi đồng ý).</summary>
+    public Task<List<PartnerRequestDto>> PartnerRequestsAsync(Guid me) =>
+        db.Users
+            .AsNoTracking()
+            .Where(u => u.PendingPartnerId == me)
+            .OrderBy(u => u.FullName)
+            .Select(u => new PartnerRequestDto(
+                u.Id, u.FullName, u.AvatarUrl,
+                db.FriendNicknames.Where(n => n.OwnerId == me && n.TargetId == u.Id)
+                    .Select(n => n.Nickname).FirstOrDefault()))
+            .ToListAsync();
 
     public Task<List<UserSummaryDto>> FollowersAsync(Guid me) =>
         MapUsersAsync(

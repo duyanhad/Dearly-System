@@ -10,7 +10,7 @@ public static class Mappings
         u.TargetWaterMl, u.MorningTargetMl, u.AfternoonTargetMl, u.EveningTargetMl,
         u.PartnerId, u.AvatarUrl, u.RequirePhoto,
         u.ReminderEnabled, u.ReminderStyle, u.ReminderIntervalMinutes, u.ReminderMl,
-        u.ReminderStartHour, u.ReminderEndHour, u.CoverUrl);
+        u.ReminderStartHour, u.ReminderEndHour, u.CoverUrl, u.PendingPartnerId);
 
     /// <summary>Tên hiển thị: biệt hiệu nếu có, không thì tên thật.</summary>
     public static string DisplayName(this string fullName, string? nickname) =>

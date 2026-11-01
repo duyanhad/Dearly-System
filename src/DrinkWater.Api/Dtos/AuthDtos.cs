@@ -29,7 +29,9 @@ public record UserProfileDto(
     int ReminderMl = 200,
     int ReminderStartHour = 7,
     int ReminderEndHour = 23,
-    string? CoverUrl = null);
+    string? CoverUrl = null,
+    // Người đang được xin làm người duyệt ảnh (chờ họ đồng ý).
+    Guid? PendingPartnerId = null);
 
 public record AuthResponse(string Token, DateTime ExpiresAtUtc, UserProfileDto User);
 

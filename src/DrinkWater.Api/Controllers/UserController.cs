@@ -216,20 +216,30 @@ public class UserController(
                 {
                     SenderId = me,
                     ReceiverId = partnerId,
-                    Title = "Bạn được chọn làm partner",
-                    Message = $"{myName} nhờ bạn duyệt ảnh cốc nước.",
+                    Title = "Xin bạn duyệt ảnh cốc nước",
+                    Message = $"{myName} nhờ bạn duyệt ảnh cốc nước. Mở Partner để đồng ý.",
                     Type = NotificationTypes.Partner,
                 });
+                // Chỉ là lời mời: người kia phải đồng ý thì mới thành người duyệt.
+                user.PendingPartnerId = partnerId;
                 await db.SaveChangesAsync();
                 await hub.Clients.User(partnerId.ToString()).SendAsync("ReceiveNudge", new
                 {
-                    Title = "Bạn được chọn làm partner",
-                    Message = $"{myName} nhờ bạn duyệt ảnh cốc nước.",
+                    Title = "Xin bạn duyệt ảnh cốc nước",
+                    Message = $"{myName} nhờ bạn duyệt ảnh cốc nước. Mở Partner để đồng ý.",
                 });
+                return user.ToProfile();
             }
+
+            // Đã là người duyệt của nhau rồi: không tạo lời mời mới.
+            user.PendingPartnerId = null;
+            await db.SaveChangesAsync();
+            return user.ToProfile();
         }
 
-        user.PartnerId = req.PartnerId;
+        // Bỏ chọn: xoá cả người duyệt đã đồng ý lẫn lời mời đang chờ.
+        user.PartnerId = null;
+        user.PendingPartnerId = null;
         await db.SaveChangesAsync();
         return user.ToProfile();
     }

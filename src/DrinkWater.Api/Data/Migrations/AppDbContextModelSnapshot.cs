@@ -797,6 +797,9 @@ namespace DrinkWater.Api.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("PendingPartnerId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("ReminderEnabled")
                         .HasColumnType("boolean");
 
@@ -842,6 +845,8 @@ namespace DrinkWater.Api.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("PartnerId");
+
+                    b.HasIndex("PendingPartnerId");
 
                     b.ToTable("Users", t =>
                         {
@@ -1082,6 +1087,11 @@ namespace DrinkWater.Api.Data.Migrations
                     b.HasOne("DrinkWater.Api.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("PartnerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DrinkWater.Api.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("PendingPartnerId")
                         .OnDelete(DeleteBehavior.SetNull);
                 });
 

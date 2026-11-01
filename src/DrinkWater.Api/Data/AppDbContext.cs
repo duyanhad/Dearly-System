@@ -39,6 +39,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.RequirePhoto).HasDefaultValue(true);
             e.ToTable(t => t.HasCheckConstraint("CK_Users_Role", "\"Role\" IN ('User','Admin')"));
             e.HasOne<User>().WithMany().HasForeignKey(x => x.PartnerId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.PendingPartnerId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<Follow>(e =>
