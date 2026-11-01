@@ -216,8 +216,8 @@ public class UserController(
                 {
                     SenderId = me,
                     ReceiverId = partnerId,
-                    Title = "Xin bạn duyệt ảnh cốc nước",
-                    Message = $"{myName} nhờ bạn duyệt ảnh cốc nước. Mở Partner để đồng ý.",
+                    Title = "Mời bạn làm partner",
+                    Message = $"{myName} mời bạn làm partner duyệt ảnh cốc nước. Mở Partner để đồng ý.",
                     Type = NotificationTypes.Partner,
                 });
                 // Chỉ là lời mời: người kia phải đồng ý thì mới thành người duyệt.
@@ -225,8 +225,8 @@ public class UserController(
                 await db.SaveChangesAsync();
                 await hub.Clients.User(partnerId.ToString()).SendAsync("ReceiveNudge", new
                 {
-                    Title = "Xin bạn duyệt ảnh cốc nước",
-                    Message = $"{myName} nhờ bạn duyệt ảnh cốc nước. Mở Partner để đồng ý.",
+                    Title = "Mời bạn làm partner",
+                    Message = $"{myName} mời bạn làm partner duyệt ảnh cốc nước. Mở Partner để đồng ý.",
                 });
                 return user.ToProfile();
             }

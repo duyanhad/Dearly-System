@@ -223,16 +223,16 @@ public class SocialController(
         {
             SenderId = me,
             ReceiverId = userId,
-            Title = "Đã nhận duyệt ảnh",
-            Message = $"{myName} đồng ý duyệt ảnh cốc nước của bạn.",
+            Title = "Đã nhận làm partner",
+            Message = $"{myName} đồng ý làm partner của bạn.",
             Type = NotificationTypes.Partner,
         });
         await db.SaveChangesAsync();
 
         await hub.Clients.User(userId.ToString()).SendAsync("ReceiveNudge", new
         {
-            Title = "Đã nhận duyệt ảnh",
-            Message = $"{myName} đồng ý duyệt ảnh cốc nước của bạn.",
+            Title = "Đã nhận làm partner",
+            Message = $"{myName} đồng ý làm partner của bạn.",
         });
         return NoContent();
     }
@@ -241,10 +241,21 @@ public class SocialController(
     [HttpPost("partner/requests/{userId:guid}/reject")]
     public async Task<IActionResult> RejectPartnerRequest(Guid userId)
     {
-        var requester = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PendingPartnerId == User.GetUserId());
+        var me = User.GetUserId();
+        var requester = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PendingPartnerId == me);
         if (requester is null) return NotFound();
 
         requester.PendingPartnerId = null;
+
+        var myName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync();
+        db.Notifications.Add(new Notification
+        {
+            SenderId = me,
+            ReceiverId = userId,
+            Title = "Từ chối làm partner",
+            Message = $"{myName} không nhận làm partner của bạn.",
+            Type = NotificationTypes.Partner,
+        });
         await db.SaveChangesAsync();
         return NoContent();
     }
