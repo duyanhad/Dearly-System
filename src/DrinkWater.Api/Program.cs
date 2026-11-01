@@ -193,6 +193,9 @@ static async Task MigrateOnStartAsync(WebApplication app)
         await DbSeeder.SeedAdminAsync(db,
             scope.ServiceProvider.GetRequiredService<IOptions<AppOptions>>(),
             scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Seed"));
+        // Dữ liệu cũ có thể còn partner trỏ vào người đã bỏ kết bạn → dọn để trang Partner không
+        // hiện người đã xoá.
+        await SocialCleanup.ClearOrphanPartnersAsync(db);
     }
     catch (Exception ex)
     {
