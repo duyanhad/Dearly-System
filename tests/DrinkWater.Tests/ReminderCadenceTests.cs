@@ -71,6 +71,22 @@ public class ReminderCadenceTests
     }
 
     [Fact]
+    public void No_reminder_once_the_daily_target_is_reached()
+    {
+        // 2100/2000 ml: đủ 100% thì dù lâu chưa uống thêm cũng im.
+        Assert.False(ReminderCadence.ShouldRemind(
+            At(15), At(9), null, 120, ReminderStyles.Normal, drankMl: 2100, targetMl: 2000));
+        Assert.False(ReminderCadence.ShouldRemind(
+            At(15), At(9), null, 120, ReminderStyles.Demon, drankMl: 2000, targetMl: 2000));
+        // Chưa đủ thì vẫn nhắc như cũ.
+        Assert.True(ReminderCadence.ShouldRemind(
+            At(15), At(9), null, 120, ReminderStyles.Normal, drankMl: 1999, targetMl: 2000));
+        // Chưa cấu hình chỉ tiêu (0) thì không chặn gì.
+        Assert.True(ReminderCadence.ShouldRemind(
+            At(15), At(9), null, 120, ReminderStyles.Normal, drankMl: 5000, targetMl: 0));
+    }
+
+    [Fact]
     public void Invalid_interval_never_reminds()
     {
         Assert.False(ReminderCadence.ShouldRemind(At(12), null, null, 5, ReminderStyles.Normal));

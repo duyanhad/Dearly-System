@@ -37,10 +37,15 @@ public static class ReminderCadence
         int intervalMinutes,
         string style,
         int startHour = DefaultStartHour,
-        int endHour = DefaultEndHour)
+        int endHour = DefaultEndHour,
+        int drankMl = 0,
+        int targetMl = 0)
     {
         if (!InWindow(localNow, startHour, endHour)) return false;
         if (intervalMinutes < 15) return false;
+
+        // Đã đạt chỉ tiêu hôm nay → im luôn, kể cả khi lâu rồi chưa uống thêm.
+        if (targetMl > 0 && drankMl >= targetMl) return false;
 
         // Chưa uống lần nào → cứ nhắc; đã uống thì phải quá khoảng cách mới nhắc.
         if (lastDrinkLocal is { } drank && localNow - drank < TimeSpan.FromMinutes(intervalMinutes))

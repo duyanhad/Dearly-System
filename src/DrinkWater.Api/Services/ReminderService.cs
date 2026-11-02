@@ -74,20 +74,19 @@ public sealed class ReminderService(
         var dayStartUtc = clock.LocalToUtc(today, TimeOnly.MinValue);
         var dayEndUtc = clock.LocalToUtc(today.AddDays(1), TimeOnly.MinValue);
         var userIds = users.Select(u => u.Id).ToList();
-        var drankToday = await db.WaterLogs
+        var logsToday = await db.WaterLogs
             .AsNoTracking()
             .Where(l => userIds.Contains(l.UserId)
-                        && l.LogTime >= dayStartUtc && l.LogTime < dayEndUtc
-                        && LogStatuses.Counted.Contains(l.Status))
+                        && l.LogTime >= dayStartUtc && l.LogTime < dayEndUtc)
+            .Select(l => new { l.UserId, l.AmountMl, l.Status })
+            .ToListAsync(token);
+        var drankToday = logsToday
+            .Where(l => LogStatuses.Counted.Contains(l.Status))
             .GroupBy(l => l.UserId)
-            .Select(g => new { UserId = g.Key, Ml = g.Sum(x => x.AmountMl) })
-            .ToDictionaryAsync(x => x.UserId, x => x.Ml, token);
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.AmountMl));
 
         foreach (var user in users)
         {
-            if (drankToday.TryGetValue(user.Id, out var ml) && ml >= user.TargetWaterMl && user.TargetWaterMl > 0)
-                continue;
-
             // Lần uống gần nhất (không giới hạn trong ngày) — để người vừa uống 23h đêm không bị nhắc lúc 7h sáng.
             var lastDrinkUtc = await db.WaterLogs
                 .AsNoTracking()
@@ -105,7 +104,8 @@ public sealed class ReminderService(
 
             if (!ReminderCadence.ShouldRemind(nowLocal, lastDrinkLocal, lastReminderLocal,
                     user.ReminderIntervalMinutes, user.ReminderStyle,
-                    user.ReminderStartHour, user.ReminderEndHour))
+                    user.ReminderStartHour, user.ReminderEndHour,
+                    drankToday.GetValueOrDefault(user.Id), user.TargetWaterMl))
                 continue;
 
             var minutes = lastDrinkLocal is { } drink
