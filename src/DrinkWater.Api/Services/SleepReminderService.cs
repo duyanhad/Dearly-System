@@ -55,7 +55,7 @@ public sealed class SleepReminderService(
 
         var rows = await db.HabitSettings
             .AsNoTracking()
-            .Where(h => h.Kind == "sleep" && h.Enabled && h.AlarmEnabled)
+            .Where(h => h.Kind == "sleep" && h.Enabled && h.RemindBeforeMin > 0)
             .Select(h => new { h.UserId, h.Times, h.RemindBeforeMin })
             .ToListAsync(token);
 

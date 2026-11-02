@@ -26,7 +26,8 @@ public class SleepController(
     IOptions<StorageOptions> storageOptions,
     RewardService rewards,
     IHubContext<NotificationHub> hub,
-    IWebPushSender webPush) : ControllerBase
+    IWebPushSender webPush,
+    IClock clock) : ControllerBase
 {
     private static readonly Regex TimePattern = new(@"^([01]\d|2[0-3]):[0-5]\d$", RegexOptions.Compiled);
 
@@ -337,7 +338,7 @@ public class SleepController(
         var user = await db.Users.FindAsync(User.GetUserId());
         if (user is null) return NotFound();
 
-        user.SleepReminderDismissedOn = DateOnly.FromDateTime(DateTime.Now);
+        user.SleepReminderDismissedOn = clock.TodayLocal;
         await db.SaveChangesAsync();
         return NoContent();
     }
