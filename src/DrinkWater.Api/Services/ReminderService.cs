@@ -60,7 +60,7 @@ public sealed class ReminderService(
             .Select(u => new
             {
                 u.Id, u.ReminderStyle, u.ReminderIntervalMinutes, u.ReminderMl,
-                u.ReminderStartHour, u.ReminderEndHour, u.FCMToken
+                u.ReminderStartHour, u.ReminderEndHour, u.FCMToken, u.TargetWaterMl
             })
             .ToListAsync(token);
         if (users.Count == 0) return;
@@ -68,8 +68,26 @@ public sealed class ReminderService(
         var offset = nowLocal - clock.UtcNow;
         var todayLocalStart = nowLocal.Date;
 
+        // Đã đủ chỉ tiêu hôm nay thì thôi nhắc — tiến trình tự quyết định, người dùng vẫn
+        // bấm "Nhắc nhở" tay được (endpoint khác, không đi qua vòng lặp này).
+        var today = DateOnly.FromDateTime(nowLocal);
+        var dayStartUtc = clock.LocalToUtc(today, TimeOnly.MinValue);
+        var dayEndUtc = clock.LocalToUtc(today.AddDays(1), TimeOnly.MinValue);
+        var userIds = users.Select(u => u.Id).ToList();
+        var drankToday = await db.WaterLogs
+            .AsNoTracking()
+            .Where(l => userIds.Contains(l.UserId)
+                        && l.LogTime >= dayStartUtc && l.LogTime < dayEndUtc
+                        && LogStatuses.Counted.Contains(l.Status))
+            .GroupBy(l => l.UserId)
+            .Select(g => new { UserId = g.Key, Ml = g.Sum(x => x.AmountMl) })
+            .ToDictionaryAsync(x => x.UserId, x => x.Ml, token);
+
         foreach (var user in users)
         {
+            if (drankToday.TryGetValue(user.Id, out var ml) && ml >= user.TargetWaterMl && user.TargetWaterMl > 0)
+                continue;
+
             // Lần uống gần nhất (không giới hạn trong ngày) — để người vừa uống 23h đêm không bị nhắc lúc 7h sáng.
             var lastDrinkUtc = await db.WaterLogs
                 .AsNoTracking()
