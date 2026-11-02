@@ -1,10 +1,10 @@
 name: keep-api-awake
 
 # Render (gói free) tự ngủ sau ~15 phút không có request -> lần mở app kế tiếp phải chờ 30-60s.
-# Workflow này gọi /health mỗi 10 phút để giữ server thức (không truy vấn DB nên rất nhẹ).
+# Workflow này gọi /health mỗi 5 phút (GitHub có thể trễ vài phút, vẫn dưới ngưỡng 15 phút Render tự ngủ) để giữ server thức (không truy vấn DB nên rất nhẹ).
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
