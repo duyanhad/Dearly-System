@@ -179,6 +179,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<NotificationHub>("/hubs/notifications");
+// Health nhẹ (KHÔNG truy vấn DB) để dịch vụ ping giữ server thức và để Render kiểm tra sống/chết.
+app.MapGet("/health", () => Results.Json(new { status = "ok", at = DateTime.UtcNow })).AllowAnonymous();
 app.MapGet("/", () => Results.Redirect("/swagger"));
 
 app.Run();

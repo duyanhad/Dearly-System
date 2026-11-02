@@ -1,0 +1,23 @@
+name: keep-api-awake
+
+# Render (gói free) tự ngủ sau ~15 phút không có request -> lần mở app kế tiếp phải chờ 30-60s.
+# Workflow này gọi /health mỗi 10 phút để giữ server thức (không truy vấn DB nên rất nhẹ).
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /health
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 https://dearly-system.onrender.com/health)
+            echo "attempt $i -> $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "health check failed"; exit 1
