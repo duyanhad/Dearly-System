@@ -39,6 +39,7 @@ builder.Services.AddScoped<IWebPushSender, WebPushSender>();
 builder.Services.AddHostedService<ReminderService>();
 builder.Services.AddHostedService<SleepReminderService>();
 builder.Services.AddHostedService<SleepAlarmService>();
+builder.Services.AddHostedService<HabitReminderService>();
 builder.Services.AddHostedService<VoiceNoteRinger>();
 
 builder.Services.AddSignalR();
