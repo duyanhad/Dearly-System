@@ -30,7 +30,7 @@ public class SleepLog
     /// <summary>Số phút dự định ngủ (mục tiêu của đêm) để biết khi nào đủ giấc.</summary>
     public int PlannedMinutes { get; set; }
 
-    /// <summary>Lúc đã báo "đủ giấc" cho giấc này (UTC) — chỉ báo một lần.</summary>
+    /// <summary>Lần cuối báo "đủ giấc" cho giấc này (UTC) — nhắc lại mỗi 15 phút nếu vẫn đang ngủ.</summary>
     public DateTime? FullNotifiedAtUtc { get; set; }
 
     /// <summary>Ảnh minh chứng (partner duyệt) — có thể null nếu người dùng không cần ảnh.</summary>

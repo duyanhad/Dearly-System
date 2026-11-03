@@ -121,8 +121,11 @@ public sealed class SleepAlarmService(
     {
         var nowUtc = clock.UtcNow;
 
+        // Nhắc lại mỗi 15 phút chừng nào giấc vẫn đang chạy — người dùng mở app muộn vẫn thấy.
+        var repeatBefore = nowUtc.AddMinutes(-15);
         var sleeping = await db.SleepLogs
-            .Where(l => l.Status == "sleeping" && l.FullNotifiedAtUtc == null && l.StartedAtUtc != null)
+            .Where(l => l.Status == "sleeping" && l.StartedAtUtc != null
+                        && (l.FullNotifiedAtUtc == null || l.FullNotifiedAtUtc < repeatBefore))
             .OrderBy(l => l.StartedAtUtc)
             .Take(200)
             .ToListAsync(token);
