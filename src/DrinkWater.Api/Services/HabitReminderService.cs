@@ -66,7 +66,9 @@ public sealed class HabitReminderService(
 
         var rows = await db.HabitSettings
             .AsNoTracking()
-            .Where(h => Kinds.Contains(h.Kind) && h.Enabled && h.Times != null && h.Times != "")
+            .Where(h => h.Enabled
+                        && (h.Kind == "medicine" || h.Kind == "meal" || h.Kind == "study" || h.Kind == "weight")
+                        && h.Times != null && h.Times != "")
             .Select(h => new { h.UserId, h.Kind, h.Times, h.RemindBeforeMin, h.TargetValue })
             .ToListAsync(token);
         if (rows.Count == 0) return;
@@ -112,8 +114,20 @@ public sealed class HabitReminderService(
                 }, token);
 
                 webPush.QueueForUser(row.UserId, title, body);
+                log.LogInformation("Nhắc {Kind} cho {UserId} lúc {Time}", row.Kind, row.UserId, slot.ToString("HH:mm"));
+
+                // Lưu vào chuông thông báo để xem lại được (và để kiểm chứng service có chạy).
+                db.Notifications.Add(new Entities.Notification
+                {
+                    ReceiverId = row.UserId,
+                    Title = title,
+                    Message = body,
+                    Type = Entities.NotificationTypes.Reminder,
+                });
             }
         }
+
+        await db.SaveChangesAsync(token);
 
         // Dọn mốc của hôm trước để dictionary không phình mãi.
         if (_sent.Count > 4000)

@@ -39,6 +39,8 @@ public static class NotificationTypes
     public const string Reply = "Reply";
     /// <summary>Lời nhắn thoại hẹn giờ (đã hẹn gửi hoặc đang kêu).</summary>
     public const string VoiceNote = "VoiceNote";
+    /// <summary>Nhắc theo giờ đã đặt cho thuốc / bữa ăn / học tập / cân nặng.</summary>
+    public const string Reminder = "Reminder";
 }
 
 public static class ReminderStyles
