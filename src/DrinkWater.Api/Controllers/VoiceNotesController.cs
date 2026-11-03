@@ -194,6 +194,7 @@ public class VoiceNotesController(
     /// <summary>
     /// Hộp thư lời nhắn thoại tôi ĐÃ NHẬN (để xem lại và nghe lại bất cứ lúc nào).
     /// Chỉ trả những lời nhắn ĐÃ TỚI GIỜ — trước giờ hẹn chưa được nghe.
+    /// Lời nhắn đã bị huỷ/thôi kêu vẫn nằm trong hộp thư (Cancelled chỉ nghĩa là dừng kêu).
     /// </summary>
     [HttpGet("inbox")]
     public async Task<List<VoiceNoteDto>> Inbox(CancellationToken ct)
@@ -202,7 +203,7 @@ public class VoiceNotesController(
         var now = DateTime.UtcNow;
         return await db.VoiceNotes
             .AsNoTracking()
-            .Where(v => v.ReceiverId == me && !v.Cancelled
+            .Where(v => v.ReceiverId == me
                         && v.ReceiverDeletedAtUtc == null
                         && v.ScheduledAtUtc <= now)
             .OrderByDescending(v => v.ScheduledAtUtc)
