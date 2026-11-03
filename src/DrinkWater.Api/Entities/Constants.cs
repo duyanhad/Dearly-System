@@ -41,6 +41,8 @@ public static class NotificationTypes
     public const string VoiceNote = "VoiceNote";
     /// <summary>Nhắc theo giờ đã đặt cho thuốc / bữa ăn / học tập / cân nặng.</summary>
     public const string Reminder = "Reminder";
+    /// <summary>Nhiệm vụ partner giao nhau (tạo / báo cáo / duyệt / quá hạn).</summary>
+    public const string Duty = "Duty";
 }
 
 public static class ReminderStyles

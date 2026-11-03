@@ -140,6 +140,113 @@ namespace DrinkWater.Api.Data.Migrations
                     b.ToTable("DailySummaries");
                 });
 
+            modelBuilder.Entity("DrinkWater.Api.Entities.Duty", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("AssigneeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AssignerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("DueAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DueSoonNotifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime?>("OverdueNotifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReviewNote")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("SubmittedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignerId", "DueAtUtc");
+
+                    b.HasIndex("AssigneeId", "Status", "DueAtUtc");
+
+                    b.ToTable("Duties");
+                });
+
+            modelBuilder.Entity("DrinkWater.Api.Entities.DutyMedia", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DutyId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Side")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Text")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DutyId");
+
+                    b.ToTable("DutyMedia");
+                });
+
             modelBuilder.Entity("DrinkWater.Api.Entities.Era", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1046,6 +1153,36 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("DrinkWater.Api.Entities.Duty", b =>
+                {
+                    b.HasOne("DrinkWater.Api.Entities.User", "Assignee")
+                        .WithMany()
+                        .HasForeignKey("AssigneeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DrinkWater.Api.Entities.User", "Assigner")
+                        .WithMany()
+                        .HasForeignKey("AssignerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Assignee");
+
+                    b.Navigation("Assigner");
+                });
+
+            modelBuilder.Entity("DrinkWater.Api.Entities.DutyMedia", b =>
+                {
+                    b.HasOne("DrinkWater.Api.Entities.Duty", "Duty")
+                        .WithMany("Media")
+                        .HasForeignKey("DutyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Duty");
+                });
+
             modelBuilder.Entity("DrinkWater.Api.Entities.Era", b =>
                 {
                     b.HasOne("DrinkWater.Api.Entities.EraGroup", "Group")
@@ -1229,6 +1366,11 @@ namespace DrinkWater.Api.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DrinkWater.Api.Entities.Duty", b =>
+                {
+                    b.Navigation("Media");
                 });
 
             modelBuilder.Entity("DrinkWater.Api.Entities.Era", b =>

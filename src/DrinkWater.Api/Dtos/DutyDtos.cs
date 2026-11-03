@@ -1,0 +1,41 @@
+namespace DrinkWater.Api.Dtos;
+
+/// <summary>Một tệp/nội dung đính kèm nhiệm vụ trả về cho app.</summary>
+public record DutyMediaDto(
+    int Id,
+    string Side,
+    string Kind,
+    string? Text,
+    string? Url,
+    int DurationMs,
+    int Attempt);
+
+/// <summary>Nhiệm vụ đầy đủ để hiện trong danh sách + chi tiết.</summary>
+public record DutyDto(
+    int Id,
+    Guid AssignerId,
+    Guid AssigneeId,
+    string AssignerName,
+    string? AssignerAvatar,
+    string AssigneeName,
+    string? AssigneeAvatar,
+    string Title,
+    string Note,
+    DateTime DueAtUtc,
+    string Status,
+    int Attempt,
+    DateTime CreatedAt,
+    DateTime? SubmittedAtUtc,
+    DateTime? ReviewedAtUtc,
+    string? ReviewNote,
+    /// <summary>true = tôi là người giao việc.</summary>
+    bool Mine,
+    /// <summary>Đã quá hạn báo cáo mà chưa được duyệt.</summary>
+    bool Overdue,
+    List<DutyMediaDto> Media);
+
+/// <summary>Sửa nhiệm vụ (chỉ người giao, không đổi tệp đính kèm).</summary>
+public record UpdateDutyRequest(string Title, string? Note, DateTime DueAtUtc);
+
+/// <summary>Duyệt báo cáo: đạt hay chưa đạt (kèm lý do).</summary>
+public record ReviewDutyRequest(bool Approve, string? Note);

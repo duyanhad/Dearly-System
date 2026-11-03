@@ -16,6 +16,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<VoiceNote> VoiceNotes => Set<VoiceNote>();
+    public DbSet<Duty> Duties => Set<Duty>();
+    public DbSet<DutyMedia> DutyMedia => Set<DutyMedia>();
     public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
     public DbSet<Era> Eras => Set<Era>();
     public DbSet<EraGroup> EraGroups => Set<EraGroup>();
@@ -117,6 +119,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => new { x.ReceiverId, x.ScheduledAtUtc });
             e.HasOne(x => x.Sender).WithMany().HasForeignKey(x => x.SenderId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Receiver).WithMany().HasForeignKey(x => x.ReceiverId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Duty>(e =>
+        {
+            e.Property(x => x.Title).HasMaxLength(120).IsRequired();
+            e.Property(x => x.Note).HasMaxLength(1000);
+            e.Property(x => x.Status).HasMaxLength(20);
+            // Danh sách của mỗi bên lọc theo người giao / người nhận + hạn.
+            e.HasIndex(x => new { x.AssigneeId, x.Status, x.DueAtUtc });
+            e.HasIndex(x => new { x.AssignerId, x.DueAtUtc });
+            e.HasOne(x => x.Assigner).WithMany().HasForeignKey(x => x.AssignerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Assignee).WithMany().HasForeignKey(x => x.AssigneeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Media).WithOne(m => m.Duty).HasForeignKey(m => m.DutyId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<DutyMedia>(e =>
+        {
+            e.Property(x => x.Side).HasMaxLength(10);
+            e.Property(x => x.Kind).HasMaxLength(10);
+            e.Property(x => x.Text).HasMaxLength(1000);
+            e.Property(x => x.Url).HasMaxLength(500);
         });
 
         b.Entity<SystemLog>(e =>
