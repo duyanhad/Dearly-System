@@ -38,6 +38,7 @@ builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection("Web
 builder.Services.AddScoped<IWebPushSender, WebPushSender>();
 builder.Services.AddHostedService<ReminderService>();
 builder.Services.AddHostedService<SleepReminderService>();
+builder.Services.AddHostedService<SleepAlarmService>();
 builder.Services.AddHostedService<VoiceNoteRinger>();
 
 builder.Services.AddSignalR();

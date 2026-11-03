@@ -37,6 +37,8 @@ public class User
     public DateTime? SleepDayStartAt { get; set; }
     /// <summary>Ngày người dùng đã tắt nhắc "sắp tới giờ đi ngủ" (để thôi kêu trong ngày đó).</summary>
     public DateOnly? SleepReminderDismissedOn { get; set; }
+    /// <summary>Ngày người dùng đã tắt báo thức thức dậy (để server thôi đẩy thông báo).</summary>
+    public DateOnly? SleepAlarmDismissedOn { get; set; }
     /// <summary>Ảnh bìa trang cá nhân: đường dẫn upload, hoặc "preset:<id>" cho nền dựng sẵn.</summary>
     public string? CoverUrl { get; set; }
 

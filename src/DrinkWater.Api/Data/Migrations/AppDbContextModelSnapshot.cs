@@ -677,6 +677,9 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<DateTime?>("EndedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("FullNotifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Minutes")
                         .HasColumnType("integer");
 
@@ -838,6 +841,9 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<string>("SecurityStamp")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateOnly?>("SleepAlarmDismissedOn")
+                        .HasColumnType("date");
 
                     b.Property<DateTime?>("SleepDayStartAt")
                         .HasColumnType("timestamp with time zone");
