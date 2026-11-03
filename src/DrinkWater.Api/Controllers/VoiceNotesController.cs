@@ -133,6 +133,7 @@ public class VoiceNotesController(
         return await db.VoiceNotes
             .AsNoTracking()
             .Where(v => v.ReceiverId == me && v.ListenedAtUtc == null && !v.Cancelled
+                        && v.ReceiverDeletedAtUtc == null
                         && v.ScheduledAtUtc <= now && v.ScheduledAtUtc > now.AddHours(-12))
             .OrderByDescending(v => v.ScheduledAtUtc)
             .Take(3)
@@ -142,40 +143,68 @@ public class VoiceNotesController(
             .ToListAsync(ct);
     }
 
-    /// <summary>Đã nghe → thôi kêu.</summary>
+    /// <summary>Đã nghe → thôi kêu. Chưa tới giờ hẹn thì không đánh dấu được.</summary>
     [HttpPost("{id:int}/listen")]
     public async Task<IActionResult> Listen(int id, CancellationToken ct)
     {
         var me = User.GetUserId();
         var row = await db.VoiceNotes.FirstOrDefaultAsync(v => v.Id == id && v.ReceiverId == me, ct);
         if (row is null) return NotFound();
+        if (row.ScheduledAtUtc > DateTime.UtcNow)
+            return Problem(statusCode: 400, title: "Chưa tới giờ hẹn nên chưa nghe được");
 
         row.ListenedAtUtc ??= DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
 
-    /// <summary>Huỷ một lời nhắn đã hẹn (chỉ người gửi).</summary>
+    /// <summary>
+    /// Xoá lời nhắn khỏi danh sách của CHÍNH MÌNH: người gửi thì huỷ luôn (thôi kêu),
+    /// người nhận thì chỉ ẩn khỏi hộp thư của mình.
+    /// </summary>
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Cancel(int id, CancellationToken ct)
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var me = User.GetUserId();
-        var row = await db.VoiceNotes.FirstOrDefaultAsync(v => v.Id == id && v.SenderId == me, ct);
+        var row = await db.VoiceNotes.FirstOrDefaultAsync(v => v.Id == id, ct);
         if (row is null) return NotFound();
+        if (row.SenderId != me && row.ReceiverId != me)
+            return Problem(statusCode: 403, title: "Không phải lời nhắn của bạn");
 
-        row.Cancelled = true;
+        var now = DateTime.UtcNow;
+        if (row.SenderId == me)
+        {
+            row.Cancelled = true;
+            row.SenderDeletedAtUtc = now;
+        }
+        if (row.ReceiverId == me)
+        {
+            row.ReceiverDeletedAtUtc = now;
+            row.ListenedAtUtc ??= now;
+        }
+
+        // Cả hai bên đã xoá → dọn hẳn cho nhẹ DB.
+        if (row.SenderDeletedAtUtc is not null && row.ReceiverDeletedAtUtc is not null)
+            db.VoiceNotes.Remove(row);
+
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
 
-    /// <summary>Hộp thư lời nhắn thoại tôi ĐÃ NHẬN (để xem lại và nghe lại bất cứ lúc nào).</summary>
+    /// <summary>
+    /// Hộp thư lời nhắn thoại tôi ĐÃ NHẬN (để xem lại và nghe lại bất cứ lúc nào).
+    /// Chỉ trả những lời nhắn ĐÃ TỚI GIỜ — trước giờ hẹn chưa được nghe.
+    /// </summary>
     [HttpGet("inbox")]
     public async Task<List<VoiceNoteDto>> Inbox(CancellationToken ct)
     {
         var me = User.GetUserId();
+        var now = DateTime.UtcNow;
         return await db.VoiceNotes
             .AsNoTracking()
-            .Where(v => v.ReceiverId == me)
+            .Where(v => v.ReceiverId == me && !v.Cancelled
+                        && v.ReceiverDeletedAtUtc == null
+                        && v.ScheduledAtUtc <= now)
             .OrderByDescending(v => v.ScheduledAtUtc)
             .Take(30)
             .Select(v => new VoiceNoteDto(
@@ -191,7 +220,7 @@ public class VoiceNotesController(
         var me = User.GetUserId();
         return await db.VoiceNotes
             .AsNoTracking()
-            .Where(v => v.SenderId == me)
+            .Where(v => v.SenderId == me && v.SenderDeletedAtUtc == null)
             .OrderByDescending(v => v.CreatedAt)
             .Take(20)
             .Select(v => new VoiceNoteDto(

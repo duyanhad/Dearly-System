@@ -936,6 +936,9 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<DateTime?>("ListenedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("ReceiverDeletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("ReceiverId")
                         .HasColumnType("uuid");
 
@@ -949,6 +952,9 @@ namespace DrinkWater.Api.Data.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("ScheduledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SenderDeletedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("SenderId")

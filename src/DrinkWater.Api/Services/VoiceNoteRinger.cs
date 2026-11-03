@@ -18,6 +18,9 @@ public sealed class VoiceNoteRinger(
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan Gap = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan MaxRing = TimeSpan.FromMinutes(20);
+    /// <summary>Giữ lời nhắn 7 ngày (reset mỗi tuần) để danh sách không bị quá nhiều.</summary>
+    private const int RetentionDays = 7;
+    private DateTime _lastPurge = DateTime.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -101,5 +104,23 @@ public sealed class VoiceNoteRinger(
         }
 
         await db.SaveChangesAsync(token);
+        await PurgeOldAsync(db, now, token);
+    }
+
+    /// <summary>
+    /// Dọn lời nhắn cũ: quá 7 ngày kể từ giờ hẹn (hoặc đã bị huỷ) thì xoá hẳn để danh sách
+    /// không phình ra. Chạy tối đa mỗi giờ một lần cho nhẹ DB.
+    /// shortcut: file ghi âm trên Storage không bị xoá theo, dọn định kỳ bằng script nếu cần.
+    /// </summary>
+    private async Task PurgeOldAsync(AppDbContext db, DateTime nowUtc, CancellationToken token)
+    {
+        if (nowUtc - _lastPurge < TimeSpan.FromHours(1)) return;
+        _lastPurge = nowUtc;
+
+        var cutoff = nowUtc.AddDays(-RetentionDays);
+        var removed = await db.VoiceNotes
+            .Where(v => v.ScheduledAtUtc < cutoff)
+            .ExecuteDeleteAsync(token);
+        if (removed > 0) log.LogInformation("Đã dọn {Count} lời nhắn thoại cũ hơn {Days} ngày", removed, RetentionDays);
     }
 }

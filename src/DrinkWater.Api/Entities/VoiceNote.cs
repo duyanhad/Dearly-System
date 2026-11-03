@@ -31,6 +31,12 @@ public class VoiceNote
     /// <summary>Người gửi huỷ hoặc hệ thống dừng sau khi kêu quá lâu.</summary>
     public bool Cancelled { get; set; }
 
+    /// <summary>Người gửi đã xoá khỏi danh sách của mình (không ảnh hưởng người nhận).</summary>
+    public DateTime? SenderDeletedAtUtc { get; set; }
+
+    /// <summary>Người nhận đã xoá khỏi hộp thư của mình.</summary>
+    public DateTime? ReceiverDeletedAtUtc { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public User Sender { get; set; } = null!;
