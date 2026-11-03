@@ -114,13 +114,20 @@ public sealed class VoiceNoteRinger(
     /// </summary>
     private async Task PurgeOldAsync(AppDbContext db, DateTime nowUtc, CancellationToken token)
     {
-        if (nowUtc - _lastPurge < TimeSpan.FromHours(1)) return;
+        if (nowUtc - _lastPurge < TimeSpan.FromMinutes(15)) return;
         _lastPurge = nowUtc;
 
-        var cutoff = nowUtc.AddDays(-RetentionDays);
-        var removed = await db.VoiceNotes
-            .Where(v => v.ScheduledAtUtc < cutoff)
-            .ExecuteDeleteAsync(token);
-        if (removed > 0) log.LogInformation("Đã dọn {Count} lời nhắn thoại cũ hơn {Days} ngày", removed, RetentionDays);
+        try
+        {
+            var cutoff = nowUtc.AddDays(-RetentionDays);
+            var removed = await db.VoiceNotes
+                .Where(v => v.ScheduledAtUtc < cutoff)
+                .ExecuteDeleteAsync(token);
+            if (removed > 0) log.LogInformation("Đã dọn {Count} lời nhắn thoại cũ hơn {Days} ngày", removed, RetentionDays);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Dọn lời nhắn thoại cũ lỗi");
+        }
     }
 }
