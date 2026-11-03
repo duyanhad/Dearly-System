@@ -14,7 +14,10 @@ public interface IWebPushSender
         Guid userId, string title, string body, string? style = null, int? tagId = null, CancellationToken ct = default);
 
     /// <summary>Gửi nền sau khi request kết thúc (tự tạo scope riêng nên không lỗi DbContext đã dispose).</summary>
-    void QueueForUser(Guid userId, string title, string body, string? style = null);
+    /// <param name="tagId">
+    /// Khác nhau mỗi lần gửi → iOS coi là thông báo mới và kêu lại (iOS không hỗ trợ renotify).
+    /// </param>
+    void QueueForUser(Guid userId, string title, string body, string? style = null, int? tagId = null);
 }
 
 /// <summary>
@@ -30,7 +33,7 @@ public sealed class WebPushSender(
 {
     private readonly WebPushOptions _options = options.Value;
 
-    public void QueueForUser(Guid userId, string title, string body, string? style = null)
+    public void QueueForUser(Guid userId, string title, string body, string? style = null, int? tagId = null)
     {
         _ = Task.Run(async () =>
         {
@@ -38,7 +41,7 @@ public sealed class WebPushSender(
             {
                 using var scope = scopeFactory.CreateScope();
                 var sender = scope.ServiceProvider.GetRequiredService<IWebPushSender>();
-                await sender.SendToUserAsync(userId, title, body, style);
+                await sender.SendToUserAsync(userId, title, body, style, tagId);
             }
             catch (Exception ex)
             {

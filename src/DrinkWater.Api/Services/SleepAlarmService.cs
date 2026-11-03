@@ -23,6 +23,13 @@ public sealed class SleepAlarmService(
     private const int RingMinutes = 45;
     private readonly ConcurrentDictionary<Guid, DateTime> _lastSent = new();
 
+    /// <summary>
+    /// Mỗi lần kêu dùng một tag khác nhau: iOS không có `renotify`, trùng tag thì thông báo mới chỉ
+    /// thay cái cũ mà không kêu lại. Đổi tag mỗi phút để máy vẫn rung/kêu đủ các lần.
+    /// </summary>
+    private static int AlarmTag(DateTime nowLocal) =>
+        (int)(new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, nowLocal.Hour, nowLocal.Minute, 0).Ticks % int.MaxValue);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -113,7 +120,7 @@ public sealed class SleepAlarmService(
                 wakeTime = wakeTime.ToString("HH:mm"),
             }, token);
 
-            webPush.QueueForUser(row.UserId, title, body);
+            webPush.QueueForUser(row.UserId, title, body, null, AlarmTag(now));
         }
     }
 
