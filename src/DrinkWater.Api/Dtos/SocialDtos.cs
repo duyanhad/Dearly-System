@@ -115,3 +115,20 @@ public record SetNicknameRequest([MaxLength(50)] string? Nickname);
 
 /// <summary>Trả lời lại một thông báo (vd. phản hồi ảnh đã duyệt) — gửi tới người gửi ban đầu.</summary>
 public record ReplyNotificationRequest([Required, MaxLength(300)] string Message);
+
+/// <summary>Chuỗi (thành tựu) hiện tại của một nhu cầu trên trang cá nhân người khác.</summary>
+public record FriendStreakDto(string Kind, int Days, bool DoneToday);
+
+/// <summary>
+/// Một ngày trên lịch của người khác: `Kinds` là các nhu cầu có ghi nhận (bạn bè cũng thấy),
+/// `Detail` là số liệu chi tiết — chỉ trả khi người xem là partner.
+/// </summary>
+public record FriendDayDto(string Date, List<string> Kinds, Dictionary<string, string>? Detail);
+
+/// <summary>Trang cá nhân người khác: chuỗi thành tựu + lịch tháng của họ.</summary>
+public record FriendOverviewDto(
+    bool IsPartner,
+    int Year,
+    int Month,
+    List<FriendStreakDto> Streaks,
+    List<FriendDayDto> Days);

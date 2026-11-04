@@ -282,6 +282,152 @@ public class SocialController(
         return await social.ReviewedProofsAsync(userId, kind, take);
     }
 
+    /// <summary>
+    /// Trang cá nhân người khác: chuỗi thành tựu từng nhu cầu + lịch tháng.
+    /// Bạn bè chỉ thấy chấm (nhu cầu nào có ghi nhận); partner thấy thêm số liệu chi tiết.
+    /// </summary>
+    [HttpGet("users/{userId:guid}/overview")]
+    public async Task<ActionResult<FriendOverviewDto>> UserOverview(
+        Guid userId, [FromQuery] int? year, [FromQuery] int? month)
+    {
+        var me = User.GetUserId();
+        if (userId == me) return Problem(statusCode: 400, title: "Dùng trang Lịch cho chính mình");
+
+        var related = await db.Follows.AnyAsync(f => f.Status == FollowStatuses.Accepted &&
+            ((f.FollowerId == me && f.FollowingId == userId) ||
+             (f.FollowerId == userId && f.FollowingId == me)));
+        var isPartner = await db.Users.AnyAsync(u => u.Id == userId && u.PartnerId == me)
+                        || await db.Users.AnyAsync(u => u.Id == me && u.PartnerId == userId);
+        if (!related && !isPartner)
+            return Problem(statusCode: 403, title: "Chỉ bạn bè hoặc partner xem được");
+
+        var today = clock.TodayLocal;
+        var y = year ?? today.Year;
+        var m = Math.Clamp(month ?? today.Month, 1, 12);
+        var first = new DateOnly(y, m, 1);
+        var last = first.AddMonths(1).AddDays(-1);
+        var streakFrom = today.AddDays(-120);
+
+        var settings = await db.HabitSettings.AsNoTracking()
+            .Where(h => h.UserId == userId)
+            .ToListAsync();
+        int TargetOf(string kind) => settings.FirstOrDefault(s => s.Kind == kind)?.TargetValue ?? 0;
+
+        // ---- dữ liệu để tính chuỗi (120 ngày gần nhất) ----
+        var summaries = await db.DailySummaries.AsNoTracking()
+            .Where(s => s.UserId == userId && s.Date >= streakFrom && s.Date <= today)
+            .ToListAsync();
+        var sleeps = await db.SleepLogs.AsNoTracking()
+            .Where(l => l.UserId == userId && l.Date >= streakFrom && l.Date <= today
+                        && l.Status != "rejected" && l.Status != "sleeping")
+            .Select(l => new { l.Date, l.Minutes })
+            .ToListAsync();
+        var habitLogs = await db.HabitLogs.AsNoTracking()
+            .Where(l => l.UserId == userId && l.Date >= streakFrom && l.Date <= today && l.Status != "rejected")
+            .Select(l => new { l.Date, l.Kind, l.Value })
+            .ToListAsync();
+
+        var waterDone = summaries.Where(s => s.IsCompleted).Select(s => s.Date).ToHashSet();
+        var sleepGoal = TargetOf("sleep") > 0 ? TargetOf("sleep") : 480;
+        var sleepDone = sleeps.GroupBy(s => s.Date)
+            .Where(g => g.Sum(x => x.Minutes) >= sleepGoal)
+            .Select(g => g.Key)
+            .ToHashSet();
+        var habitGoal = new Dictionary<string, int>
+        {
+            ["medicine"] = TargetOf("medicine") > 0 ? TargetOf("medicine") : 3,
+            ["meal"] = TargetOf("meal") > 0 ? TargetOf("meal") : 3,
+            ["study"] = TargetOf("study") > 0 ? TargetOf("study") : 2,
+        };
+        var habitDone = new Dictionary<string, HashSet<DateOnly>>();
+        foreach (var kind in habitGoal.Keys)
+        {
+            habitDone[kind] = habitLogs
+                .Where(l => l.Kind == kind)
+                .GroupBy(l => l.Date)
+                .Where(g => g.Count() >= habitGoal[kind])
+                .Select(g => g.Key)
+                .ToHashSet();
+        }
+        var weightDone = habitLogs.Where(l => l.Kind == "weight").Select(l => l.Date).ToHashSet();
+
+        // Chuỗi: đếm lùi từ hôm nay; hôm nay chưa xong thì tính tới hôm qua (chưa coi là gãy).
+        int StreakOf(HashSet<DateOnly> done)
+        {
+            var cursor = done.Contains(today) ? today : today.AddDays(-1);
+            var count = 0;
+            while (done.Contains(cursor))
+            {
+                count += 1;
+                cursor = cursor.AddDays(-1);
+            }
+            return count;
+        }
+
+        var streaks = new List<FriendStreakDto>
+        {
+            new("water", StreakOf(waterDone), waterDone.Contains(today)),
+            new("sleep", StreakOf(sleepDone), sleepDone.Contains(today)),
+        };
+        foreach (var kind in new[] { "meal", "medicine", "study" })
+            streaks.Add(new(kind, StreakOf(habitDone[kind]), habitDone[kind].Contains(today)));
+        streaks.Add(new("weight", StreakOf(weightDone), weightDone.Contains(today)));
+
+        // ---- dữ liệu lịch của tháng đang xem ----
+        var monthSummaries = summaries.Where(s => s.Date >= first && s.Date <= last && s.Date >= streakFrom).ToList();
+        var monthSleep = await db.SleepLogs.AsNoTracking()
+            .Where(l => l.UserId == userId && l.Date >= first && l.Date <= last
+                        && l.Status != "rejected" && l.Status != "sleeping")
+            .Select(l => new { l.Date, l.Minutes })
+            .ToListAsync();
+        var monthHabits = await db.HabitLogs.AsNoTracking()
+            .Where(l => l.UserId == userId && l.Date >= first && l.Date <= last && l.Status != "rejected")
+            .Select(l => new { l.Date, l.Kind, l.Value })
+            .ToListAsync();
+
+        var days = new Dictionary<DateOnly, (List<string> Kinds, Dictionary<string, string> Detail)>();
+        (List<string>, Dictionary<string, string>) Row(DateOnly date)
+        {
+            if (!days.TryGetValue(date, out var row))
+            {
+                row = ([], new Dictionary<string, string>());
+                days[date] = row;
+            }
+            return row;
+        }
+
+        foreach (var s in monthSummaries.Where(s => s.TotalDrankMl > 0))
+        {
+            var (kinds, detail) = Row(s.Date);
+            kinds.Add("water");
+            detail["water"] = $"{s.TotalDrankMl} ml";
+        }
+        foreach (var g in monthSleep.GroupBy(l => l.Date).Where(g => g.Sum(x => x.Minutes) > 0))
+        {
+            var (kinds, detail) = Row(g.Key);
+            var minutes = g.Sum(x => x.Minutes);
+            kinds.Add("sleep");
+            detail["sleep"] = $"{minutes / 60}h{minutes % 60:00}";
+        }
+        foreach (var g in monthHabits.GroupBy(l => new { l.Date, l.Kind }))
+        {
+            var (kinds, detail) = Row(g.Key.Date);
+            kinds.Add(g.Key.Kind);
+            detail[g.Key.Kind] = g.Key.Kind == "weight"
+                ? $"{(g.OrderBy(x => x.Value).Last().Value ?? 0) / 1000.0:0.0} kg"
+                : $"{g.Count()} lần";
+        }
+
+        return new FriendOverviewDto(
+            isPartner, y, m, streaks,
+            days.OrderBy(d => d.Key)
+                .Select(d => new FriendDayDto(
+                    d.Key.ToString("yyyy-MM-dd"),
+                    d.Value.Kinds.Distinct().ToList(),
+                    isPartner ? d.Value.Detail : null))
+                .ToList());
+    }
+
     /// <summary>Tiến độ hôm nay của một người mình duyệt ảnh (dùng cho trang partner).</summary>
     [HttpGet("partner/clients/{userId:guid}/today")]
     public async Task<ActionResult<TodayDto>> ClientToday(Guid userId)
