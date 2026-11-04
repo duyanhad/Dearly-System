@@ -169,6 +169,8 @@ public class DutiesController(
         var duty = await LoadAsync(id, ct);
         if (duty is null) return NotFound();
         if (duty.AssigneeId != me) return Forbid();
+        if (duty.Status is DutyStatuses.Approved or DutyStatuses.Declined)
+            return Problem(statusCode: 400, title: "Nhiệm vụ này đã đóng");
 
         if (duty.AcceptedAtUtc is null)
         {
@@ -179,6 +181,62 @@ public class DutiesController(
             await NotifyAsync(duty.AssignerId, "✅ Đã nhận nhiệm vụ",
                 $"{meName} đã nhận “{duty.Title}”. Bạn sẽ được báo khi có báo cáo.", ct);
         }
+
+        return ToDto(duty, me, clock.UtcNow);
+    }
+
+    /// <summary>Người nhận từ chối nhiệm vụ (kèm lý do nếu muốn) — nhiệm vụ đóng lại.</summary>
+    [HttpPost("{id:int}/decline")]
+    public async Task<ActionResult<DutyDto>> Decline(int id, DeclineDutyRequest req, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        var duty = await LoadAsync(id, ct);
+        if (duty is null) return NotFound();
+        if (duty.AssigneeId != me) return Forbid();
+        if (duty.Status is DutyStatuses.Approved or DutyStatuses.Declined)
+            return Problem(statusCode: 400, title: "Nhiệm vụ này đã đóng");
+
+        duty.Status = DutyStatuses.Declined;
+        duty.AcceptedAtUtc ??= clock.UtcNow;
+        duty.ReviewedAtUtc = clock.UtcNow;
+        duty.ReviewNote = (req.Note ?? string.Empty).Trim();
+        await db.SaveChangesAsync(ct);
+
+        var meName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync(ct);
+        var body = $"{meName} đã từ chối “{duty.Title}”"
+                   + (string.IsNullOrEmpty(duty.ReviewNote) ? "." : $": {duty.ReviewNote}");
+        await NotifyAsync(duty.AssignerId, "🚫 Nhiệm vụ bị từ chối", body, ct);
+
+        return ToDto(duty, me, clock.UtcNow);
+    }
+
+    /// <summary>
+    /// Người nhận thu hồi báo cáo vừa gửi để sửa lại: bỏ bằng chứng của lần gần nhất, nhiệm vụ trở về
+    /// trạng thái đang làm để người giao không còn thấy báo cáo đó nữa.
+    /// </summary>
+    [HttpPost("{id:int}/withdraw")]
+    public async Task<ActionResult<DutyDto>> Withdraw(int id, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        var duty = await LoadAsync(id, ct);
+        if (duty is null) return NotFound();
+        if (duty.AssigneeId != me) return Forbid();
+        if (duty.Status != DutyStatuses.Submitted)
+            return Problem(statusCode: 400, title: "Chưa có báo cáo nào để sửa");
+
+        var last = duty.Attempt;
+        var removed = duty.Media.Where(m => m.Side == DutySides.Report && m.Attempt == last).ToList();
+        db.DutyMedia.RemoveRange(removed);
+
+        duty.Status = DutyStatuses.Open;
+        duty.SubmittedAtUtc = null;
+        duty.ReviewedAtUtc = null;
+        duty.ReviewNote = null;
+        await db.SaveChangesAsync(ct);
+
+        var meName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync(ct);
+        await NotifyAsync(duty.AssignerId, "✏️ Đang sửa báo cáo",
+            $"{meName} thu hồi báo cáo “{duty.Title}” để sửa. Bạn sẽ nhận lại khi họ gửi xong.", ct);
 
         return ToDto(duty, me, clock.UtcNow);
     }
@@ -376,8 +434,8 @@ public class DutiesController(
         d.AcceptedAtUtc, d.Status, d.Attempt,
         d.CreatedAt, d.SubmittedAtUtc, d.ReviewedAtUtc, d.ReviewNote,
         d.AssignerId == me,
-        d.Status != DutyStatuses.Approved && nowUtc > d.DueAtUtc,
-        d.AcceptedAtUtc is null,
+        d.Status != DutyStatuses.Approved && d.Status != DutyStatuses.Declined && nowUtc > d.DueAtUtc,
+        d.AcceptedAtUtc is null && d.Status == DutyStatuses.Open,
         d.Media
             .OrderBy(m => m.Attempt).ThenBy(m => m.Id)
             .Select(m => new DutyMediaDto(m.Id, m.Side, m.Kind, m.Text, m.Url, m.DurationMs, m.Attempt))

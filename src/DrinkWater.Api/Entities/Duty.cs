@@ -81,6 +81,8 @@ public static class DutyStatuses
     public const string Submitted = "submitted";
     public const string Approved = "approved";
     public const string Rejected = "rejected";
+    /// <summary>Người nhận từ chối nhiệm vụ (không làm).</summary>
+    public const string Declined = "declined";
 }
 
 public static class DutySides

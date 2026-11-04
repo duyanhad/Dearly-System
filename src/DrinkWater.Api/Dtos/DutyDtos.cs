@@ -45,3 +45,6 @@ public record UpdateDutyRequest(string Title, string? Note, DateTime StartsAtUtc
 
 /// <summary>Duyệt báo cáo: đạt hay chưa đạt (kèm lý do).</summary>
 public record ReviewDutyRequest(bool Approve, string? Note);
+
+/// <summary>Người nhận từ chối nhiệm vụ, kèm lý do (không bắt buộc).</summary>
+public record DeclineDutyRequest(string? Note);
