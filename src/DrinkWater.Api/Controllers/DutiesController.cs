@@ -1,4 +1,5 @@
 using DrinkWater.Api.Data;
+using System.Text.Json;
 using DrinkWater.Api.Dtos;
 using DrinkWater.Api.Entities;
 using DrinkWater.Api.Hubs;
@@ -129,78 +130,64 @@ public class DutiesController(
     }
 
     /// <summary>
-    /// Giao nhiều nhiệm vụ trong một lần: mọi nhiệm vụ dùng chung giờ bắt đầu / nhắc trước / hạn,
-    /// nội dung kèm theo được tải lên một lần rồi gắn cho từng nhiệm vụ (không upload lặp).
+    /// Giao nhiều nhiệm vụ trong một lần. Mỗi nhiệm vụ có tên / mô tả / giờ bắt đầu / hạn / nhắc trước
+    /// và nội dung gửi kèm riêng (tệp đính kèm đặt tên `files_0`, `files_1`… theo vị trí trong lô).
     /// </summary>
     [HttpPost("batch")]
-    [RequestFormLimits(MultipartBodyLengthLimit = 40 * 1024 * 1024)]
-    public async Task<ActionResult<List<DutyDto>>> CreateMany(
-        [FromForm] List<string> titles,
-        [FromForm] DateTime startsAtUtc,
-        [FromForm] DateTime dueAtUtc,
-        [FromForm] int? remindBeforeMin,
-        [FromForm] string? note,
-        [FromForm] string? text,
-        [FromForm] int? voiceDurationMs,
-        List<IFormFile>? files,
-        CancellationToken ct)
+    [RequestFormLimits(MultipartBodyLengthLimit = 60 * 1024 * 1024)]
+    public async Task<ActionResult<List<DutyDto>>> CreateMany([FromForm] string items, CancellationToken ct)
     {
         var me = User.GetUserId();
         var partner = await PartnerOfAsync(me, ct);
         if (partner is null)
             return Problem(statusCode: 400, title: "Chưa có partner nên chưa giao được nhiệm vụ");
 
-        var cleanTitles = (titles ?? [])
-            .Select(t => (t ?? string.Empty).Trim())
-            .Where(t => t.Length > 0)
-            .ToList();
-        if (cleanTitles.Count == 0) return Problem(statusCode: 400, title: "Chưa nhập nhiệm vụ nào");
-        if (cleanTitles.Count > 10) return Problem(statusCode: 400, title: "Mỗi lần tối đa 10 nhiệm vụ");
-        if (cleanTitles.Any(t => t.Length > 120))
-            return Problem(statusCode: 400, title: "Tên nhiệm vụ 1–120 ký tự");
+        List<BatchDutyItem>? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<List<BatchDutyItem>>(items ?? string.Empty,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (JsonException)
+        {
+            return Problem(statusCode: 400, title: "Dữ liệu nhiệm vụ không hợp lệ");
+        }
 
-        var start = ToUtc(startsAtUtc);
-        var due = ToUtc(dueAtUtc);
-        if (start < clock.UtcNow.AddMinutes(-1))
-            return Problem(statusCode: 400, title: "Giờ bắt đầu phải ở tương lai");
-        if (due <= start)
-            return Problem(statusCode: 400, title: "Hạn báo cáo phải sau giờ bắt đầu");
+        var list = (parsed ?? []).Where(i => !string.IsNullOrWhiteSpace(i.Title)).ToList();
+        if (list.Count == 0) return Problem(statusCode: 400, title: "Chưa nhập nhiệm vụ nào");
+        if (list.Count > 10) return Problem(statusCode: 400, title: "Mỗi lần tối đa 10 nhiệm vụ");
 
-        // Tải tệp lên một lần, dùng lại đường dẫn cho mọi nhiệm vụ trong lô.
-        var sharedMedia = new List<DutyMedia>();
-        var probe = new Duty();
-        var mediaError = await AttachAsync(probe, DutySides.Assign, text, voiceDurationMs, files, 0, ct);
-        if (mediaError is not null) return Problem(statusCode: 400, title: mediaError);
-        sharedMedia.AddRange(probe.Media);
-
-        var remind = Math.Clamp(remindBeforeMin ?? 10, 0, 240);
-        var cleanNote = (note ?? string.Empty).Trim();
+        var form = await Request.ReadFormAsync(ct);
         var created = new List<Duty>();
 
-        foreach (var clean in cleanTitles)
+        for (var index = 0; index < list.Count; index++)
         {
+            var item = list[index];
+            var clean = (item.Title ?? string.Empty).Trim();
+            if (clean.Length > 120) return Problem(statusCode: 400, title: $"Tên nhiệm vụ {index + 1} dài quá 120 ký tự");
+
+            var start = ToUtc(item.StartsAtUtc);
+            var due = ToUtc(item.DueAtUtc);
+            if (start < clock.UtcNow.AddMinutes(-1))
+                return Problem(statusCode: 400, title: $"Giờ bắt đầu của “{clean}” phải ở tương lai");
+            if (due <= start)
+                return Problem(statusCode: 400, title: $"Hạn báo cáo của “{clean}” phải sau giờ bắt đầu");
+
             var duty = new Duty
             {
                 AssignerId = me,
                 AssigneeId = partner.Value.Id,
                 Title = clean,
-                Note = cleanNote,
+                Note = (item.Note ?? string.Empty).Trim(),
                 StartsAtUtc = start,
-                RemindBeforeMin = remind,
+                RemindBeforeMin = Math.Clamp(item.RemindBeforeMin ?? 10, 0, 240),
                 DueAtUtc = due,
             };
-            foreach (var m in sharedMedia)
-            {
-                duty.Media.Add(new DutyMedia
-                {
-                    Side = DutySides.Assign,
-                    Kind = m.Kind,
-                    Text = m.Text,
-                    Url = m.Url,
-                    DurationMs = m.DurationMs,
-                    Attempt = 0,
-                });
-            }
+
+            var files = form.Files.Where(f => f.Name == $"files_{index}").ToList();
+            var mediaError = await AttachAsync(duty, DutySides.Assign, item.Text, item.VoiceDurationMs, files, 0, ct);
+            if (mediaError is not null) return Problem(statusCode: 400, title: $"“{clean}”: {mediaError}");
+
             db.Duties.Add(duty);
             created.Add(duty);
         }
@@ -208,9 +195,13 @@ public class DutiesController(
         await db.SaveChangesAsync(ct);
 
         var meName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync(ct);
-        var names = string.Join(", ", cleanTitles.Select(t => $"“{t}”"));
-        await NotifyAsync(partner.Value.Id, $"📋 {cleanTitles.Count} nhiệm vụ mới",
-            $"{meName} giao cho bạn {cleanTitles.Count} nhiệm vụ: {names} — bắt đầu {LocalLabel(start)}, hạn {LocalLabel(due)}. "
+        var names = string.Join(", ", created.Select(d => $"“{d.Title}”"));
+        var detail = created.Count == 1
+            ? $"bắt đầu {LocalLabel(created[0].StartsAtUtc)}, hạn {LocalLabel(created[0].DueAtUtc)}"
+            : $"hạn sớm nhất {LocalLabel(created.Min(d => d.DueAtUtc))}";
+        await NotifyAsync(partner.Value.Id,
+            created.Count == 1 ? "📋 Nhiệm vụ mới" : $"📋 {created.Count} nhiệm vụ mới",
+            $"{meName} giao cho bạn {(created.Count == 1 ? names : $"{created.Count} nhiệm vụ: {names}")} — {detail}. "
             + "Mở Dearly bấm “Đã nhận nhiệm vụ” để thôi nhắc.", ct);
 
         var ids = created.Select(d => d.Id).ToList();
@@ -221,6 +212,80 @@ public class DutiesController(
         var nowUtc = clock.UtcNow;
         return saved.OrderBy(d => d.Id).Select(d => ToDto(d, me, nowUtc)).ToList();
     }
+
+    /// <summary>
+    /// Người nhận chọn nhận một số việc và từ chối số còn lại trong một lần: lý do dùng chung,
+    /// mỗi việc bị từ chối có thể ghi thêm ghi chú riêng.
+    /// </summary>
+    [HttpPost("respond")]
+    public async Task<ActionResult<List<DutyDto>>> Respond(RespondDutiesRequest req, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        var accepts = (req.Accepts ?? []).Distinct().ToList();
+        var declines = (req.Declines ?? []).GroupBy(d => d.Id).Select(g => g.First()).ToList();
+        if (accepts.Count + declines.Count == 0)
+            return Problem(statusCode: 400, title: "Chưa chọn nhiệm vụ nào");
+
+        var ids = accepts.Concat(declines.Select(d => d.Id)).ToList();
+        var duties = await db.Duties.Include(d => d.Assigner).Include(d => d.Assignee).Include(d => d.Media)
+            .Where(d => ids.Contains(d.Id))
+            .ToListAsync(ct);
+        if (duties.Count != ids.Count) return NotFound();
+        if (duties.Any(d => d.AssigneeId != me)) return Forbid();
+
+        var sharedReason = (req.Reason ?? string.Empty).Trim();
+        var now = clock.UtcNow;
+        var accepted = new List<Duty>();
+        var declined = new List<Duty>();
+
+        foreach (var duty in duties)
+        {
+            if (duty.Status is DutyStatuses.Approved or DutyStatuses.Declined) continue;
+
+            var decline = declines.FirstOrDefault(d => d.Id == duty.Id);
+            if (decline is not null)
+            {
+                duty.Status = DutyStatuses.Declined;
+                duty.AcceptedAtUtc ??= now;
+                duty.ReviewedAtUtc = now;
+                var note = (decline.Note ?? string.Empty).Trim();
+                duty.ReviewNote = sharedReason.Length == 0 && note.Length == 0
+                    ? null
+                    : note.Length == 0 ? sharedReason
+                    : sharedReason.Length == 0 ? note
+                    : $"{sharedReason} — {note}";
+                declined.Add(duty);
+            }
+            else if (duty.AcceptedAtUtc is null)
+            {
+                duty.AcceptedAtUtc = now;
+                accepted.Add(duty);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        var meName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync(ct);
+        var assignerId = duties[0].AssignerId;
+        if (accepted.Count > 0)
+        {
+            await NotifyAsync(assignerId,
+                accepted.Count == 1 ? "✅ Đã nhận nhiệm vụ" : $"✅ Đã nhận {accepted.Count} nhiệm vụ",
+                $"{meName} đã nhận {string.Join(", ", accepted.Select(d => $"“{d.Title}”"))}. "
+                + "Bạn sẽ được báo khi có báo cáo.", ct);
+        }
+        if (declined.Count > 0)
+        {
+            var reason = sharedReason.Length > 0 ? $" Lý do: {sharedReason}." : string.Empty;
+            await NotifyAsync(assignerId,
+                declined.Count == 1 ? "🚫 Nhiệm vụ bị từ chối" : $"🚫 Từ chối {declined.Count} nhiệm vụ",
+                $"{meName} đã từ chối {string.Join(", ", declined.Select(d => $"“{d.Title}”"))}.{reason}", ct);
+        }
+
+        var nowUtc = clock.UtcNow;
+        return duties.OrderBy(d => d.Id).Select(d => ToDto(d, me, nowUtc)).ToList();
+    }
+
 
     /// <summary>Sửa tên / mô tả / giờ bắt đầu / nhắc trước / hạn (chỉ người giao).</summary>
     [HttpPut("{id:int}")]

@@ -48,3 +48,18 @@ public record ReviewDutyRequest(bool Approve, string? Note);
 
 /// <summary>Người nhận từ chối nhiệm vụ, kèm lý do (không bắt buộc).</summary>
 public record DeclineDutyRequest(string? Note);
+/// <summary>Một nhiệm vụ trong lô giao nhiều việc (gửi lên dạng JSON, tệp đính kèm theo chỉ số).</summary>
+public class BatchDutyItem
+{
+    public string? Title { get; set; }
+    public string? Note { get; set; }
+    public DateTime StartsAtUtc { get; set; }
+    public DateTime DueAtUtc { get; set; }
+    public int? RemindBeforeMin { get; set; }
+    public string? Text { get; set; }
+    public int? VoiceDurationMs { get; set; }
+}
+/// <summary>Một việc bị từ chối trong lô, kèm ghi chú riêng (không bắt buộc).</summary>
+public record DutyDeclineItem(int Id, string? Note);
+/// <summary>Người nhận trả lời cả lô: nhận những việc này, từ chối những việc kia (lý do dùng chung).</summary>
+public record RespondDutiesRequest(List<int>? Accepts, List<DutyDeclineItem>? Declines, string? Reason);
