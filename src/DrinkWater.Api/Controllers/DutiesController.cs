@@ -377,7 +377,7 @@ public class DutiesController(
         d.CreatedAt, d.SubmittedAtUtc, d.ReviewedAtUtc, d.ReviewNote,
         d.AssignerId == me,
         d.Status != DutyStatuses.Approved && nowUtc > d.DueAtUtc,
-        d.AcceptedAtUtc is null && d.AssigneeId == me,
+        d.AcceptedAtUtc is null,
         d.Media
             .OrderBy(m => m.Attempt).ThenBy(m => m.Id)
             .Select(m => new DutyMediaDto(m.Id, m.Side, m.Kind, m.Text, m.Url, m.DurationMs, m.Attempt))
