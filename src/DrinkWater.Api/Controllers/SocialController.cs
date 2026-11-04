@@ -430,14 +430,17 @@ public class SocialController(
 
     /// <summary>Chi tiết một ngày của người khác — chỉ partner (giống phần chi tiết ngày ở trang Lịch).</summary>
     [HttpGet("users/{userId:guid}/day/{date}")]
-    public async Task<ActionResult<DayDto>> UserDay(Guid userId, DateOnly date)
+    public async Task<ActionResult<DayDto>> UserDay(Guid userId, string date)
     {
+        if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", out var parsed))
+            return Problem(statusCode: 400, title: "Ngày phải có dạng yyyy-MM-dd");
+
         var me = User.GetUserId();
         var isPartner = await db.Users.AnyAsync(u => u.Id == userId && u.PartnerId == me)
                         || await db.Users.AnyAsync(u => u.Id == me && u.PartnerId == userId);
         if (!isPartner)
             return Problem(statusCode: 403, title: "Chỉ partner mới xem được chi tiết ngày");
-        return await water.GetDayAsync(userId, date);
+        return await water.GetDayAsync(userId, parsed);
     }
 
     /// <summary>Tiến độ hôm nay của một người mình duyệt ảnh (dùng cho trang partner).</summary>
