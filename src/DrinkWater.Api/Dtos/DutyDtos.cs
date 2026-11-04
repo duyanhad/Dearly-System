@@ -21,7 +21,11 @@ public record DutyDto(
     string? AssigneeAvatar,
     string Title,
     string Note,
+    DateTime StartsAtUtc,
+    int RemindBeforeMin,
     DateTime DueAtUtc,
+    /// <summary>Người nhận đã bấm "đã nhận nhiệm vụ" lúc nào.</summary>
+    DateTime? AcceptedAtUtc,
     string Status,
     int Attempt,
     DateTime CreatedAt,
@@ -32,10 +36,12 @@ public record DutyDto(
     bool Mine,
     /// <summary>Đã quá hạn báo cáo mà chưa được duyệt.</summary>
     bool Overdue,
+    /// <summary>Người nhận chưa bấm "đã nhận nhiệm vụ".</summary>
+    bool NeedsAccept,
     List<DutyMediaDto> Media);
 
 /// <summary>Sửa nhiệm vụ (chỉ người giao, không đổi tệp đính kèm).</summary>
-public record UpdateDutyRequest(string Title, string? Note, DateTime DueAtUtc);
+public record UpdateDutyRequest(string Title, string? Note, DateTime StartsAtUtc, int? RemindBeforeMin, DateTime DueAtUtc);
 
 /// <summary>Duyệt báo cáo: đạt hay chưa đạt (kèm lý do).</summary>
 public record ReviewDutyRequest(bool Approve, string? Note);

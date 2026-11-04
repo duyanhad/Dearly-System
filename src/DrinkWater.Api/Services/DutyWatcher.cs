@@ -7,7 +7,10 @@ using Microsoft.EntityFrameworkCore;
 namespace DrinkWater.Api.Services;
 
 /// <summary>
-/// Canh hạn nhiệm vụ: nhắc người nhận trước hạn 60 phút và báo cả hai bên khi quá hạn chưa báo cáo.
+/// Canh nhiệm vụ:
+/// - Chưa bấm "đã nhận nhiệm vụ" → kêu lặp mỗi 60 giây cho tới khi nhận (tối đa 60 lần).
+/// - Nhắc trước giờ bắt đầu theo số phút người giao chọn.
+/// - Báo cả hai bên khi quá hạn báo cáo.
 /// Mỗi mốc chỉ nhắc một lần (đánh dấu vào chính nhiệm vụ).
 /// </summary>
 public sealed class DutyWatcher(
@@ -17,7 +20,10 @@ public sealed class DutyWatcher(
     ILogger<DutyWatcher> log) : BackgroundService
 {
     private static readonly TimeSpan Tick = TimeSpan.FromMinutes(1);
-    private static readonly TimeSpan SoonWindow = TimeSpan.FromMinutes(60);
+    /// <summary>Khoảng cách giữa hai lần kêu "nhận nhiệm vụ".</summary>
+    private static readonly TimeSpan RingGap = TimeSpan.FromSeconds(60);
+    /// <summary>Kêu tối đa 60 lần (1 tiếng) để không spam vô hạn.</summary>
+    private const int MaxRings = 60;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -29,7 +35,7 @@ public sealed class DutyWatcher(
             }
             catch (Exception ex)
             {
-                log.LogWarning(ex, "Vòng canh hạn nhiệm vụ lỗi, sẽ thử lại sau");
+                log.LogWarning(ex, "Vòng canh nhiệm vụ lỗi, sẽ thử lại sau");
             }
 
             try
@@ -50,10 +56,48 @@ public sealed class DutyWatcher(
         var webPush = scope.ServiceProvider.GetRequiredService<IWebPushSender>();
         var now = clock.UtcNow;
 
+        await RingUnacceptedAsync(db, hub, webPush, now, token);
+        await WarnAsync(db, hub, webPush, now, token);
+    }
+
+    /// <summary>Kêu lặp cho tới khi người nhận bấm "đã nhận nhiệm vụ".</summary>
+    private static async Task RingUnacceptedAsync(
+        AppDbContext db, IHubContext<NotificationHub> hub, IWebPushSender webPush, DateTime now, CancellationToken token)
+    {
+        var pending = await db.Duties
+            .Where(d => d.AcceptedAtUtc == null
+                        && d.Status == DutyStatuses.Open
+                        && d.RingCount < MaxRings
+                        && (d.LastRungAtUtc == null || d.LastRungAtUtc < now.Add(-RingGap)))
+            .OrderBy(d => d.CreatedAt)
+            .Take(100)
+            .ToListAsync(token);
+        if (pending.Count == 0) return;
+
+        foreach (var duty in pending)
+        {
+            duty.LastRungAtUtc = now;
+            duty.RingCount += 1;
+
+            var title = "📋 Nhận nhiệm vụ đi!";
+            var body = $"“{duty.Title}” đang chờ bạn bấm “Đã nhận nhiệm vụ” (lần {duty.RingCount}).";
+
+            await hub.Clients.User(duty.AssigneeId.ToString())
+                .SendAsync("ReceiveDutyRing", new { id = duty.Id, title, body }, token);
+            webPush.QueueForUser(duty.AssigneeId, title, body);
+        }
+
+        await db.SaveChangesAsync(token);
+    }
+
+    /// <summary>Nhắc trước giờ bắt đầu + báo quá hạn (mỗi mốc một lần).</summary>
+    private static async Task WarnAsync(
+        AppDbContext db, IHubContext<NotificationHub> hub, IWebPushSender webPush, DateTime now, CancellationToken token)
+    {
         var open = await db.Duties
-            .Where(d => (d.Status == DutyStatuses.Open || d.Status == DutyStatuses.Rejected)
-                        && (d.DueSoonNotifiedAtUtc == null || d.OverdueNotifiedAtUtc == null))
-            .OrderBy(d => d.DueAtUtc)
+            .Where(d => d.Status == DutyStatuses.Open || d.Status == DutyStatuses.Rejected)
+            .Where(d => d.StartNotifiedAtUtc == null || d.OverdueNotifiedAtUtc == null)
+            .OrderBy(d => d.StartsAtUtc)
             .Take(200)
             .ToListAsync(token);
         if (open.Count == 0) return;
@@ -61,13 +105,15 @@ public sealed class DutyWatcher(
         var changed = false;
         foreach (var duty in open)
         {
-            if (duty.DueSoonNotifiedAtUtc is null && now > duty.DueAtUtc - SoonWindow && now < duty.DueAtUtc)
+            var before = TimeSpan.FromMinutes(Math.Clamp(duty.RemindBeforeMin, 0, 240));
+            if (duty.StartNotifiedAtUtc is null && duty.RemindBeforeMin > 0
+                && now > duty.StartsAtUtc - before && now < duty.StartsAtUtc)
             {
-                duty.DueSoonNotifiedAtUtc = now;
+                duty.StartNotifiedAtUtc = now;
                 changed = true;
                 await SendAsync(db, hub, webPush, duty.AssigneeId,
-                    "⏳ Sắp tới hạn nhiệm vụ",
-                    $"“{duty.Title}” còn dưới 60 phút để báo cáo.", token);
+                    "⏰ Sắp tới giờ bắt đầu nhiệm vụ",
+                    $"“{duty.Title}” bắt đầu sau {duty.RemindBeforeMin} phút.", token);
             }
 
             if (duty.OverdueNotifiedAtUtc is null && now > duty.DueAtUtc)

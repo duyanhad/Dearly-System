@@ -78,7 +78,9 @@ public class DutiesController(
     [RequestFormLimits(MultipartBodyLengthLimit = 40 * 1024 * 1024)]
     public async Task<ActionResult<DutyDto>> Create(
         [FromForm] string title,
+        [FromForm] DateTime startsAtUtc,
         [FromForm] DateTime dueAtUtc,
+        [FromForm] int? remindBeforeMin,
         [FromForm] string? note,
         [FromForm] string? text,
         [FromForm] int? voiceDurationMs,
@@ -93,9 +95,12 @@ public class DutiesController(
         var clean = (title ?? string.Empty).Trim();
         if (clean.Length is 0 or > 120) return Problem(statusCode: 400, title: "Tên nhiệm vụ 1–120 ký tự");
 
-        var due = dueAtUtc.Kind == DateTimeKind.Utc ? dueAtUtc : dueAtUtc.ToUniversalTime();
-        if (due < clock.UtcNow.AddMinutes(-1))
-            return Problem(statusCode: 400, title: "Hạn báo cáo phải ở tương lai");
+        var start = ToUtc(startsAtUtc);
+        var due = ToUtc(dueAtUtc);
+        if (start < clock.UtcNow.AddMinutes(-1))
+            return Problem(statusCode: 400, title: "Giờ bắt đầu phải ở tương lai");
+        if (due <= start)
+            return Problem(statusCode: 400, title: "Hạn báo cáo phải sau giờ bắt đầu");
 
         var duty = new Duty
         {
@@ -103,6 +108,8 @@ public class DutiesController(
             AssigneeId = partner.Value.Id,
             Title = clean,
             Note = (note ?? string.Empty).Trim(),
+            StartsAtUtc = start,
+            RemindBeforeMin = Math.Clamp(remindBeforeMin ?? 10, 0, 240),
             DueAtUtc = due,
         };
 
@@ -114,13 +121,14 @@ public class DutiesController(
 
         var meName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync(ct);
         await NotifyAsync(partner.Value.Id, "📋 Nhiệm vụ mới",
-            $"{meName} giao cho bạn: “{clean}” — hạn {LocalLabel(due)}.", ct);
+            $"{meName} giao cho bạn: “{clean}” — bắt đầu {LocalLabel(duty.StartsAtUtc)}, hạn {LocalLabel(due)}. "
+            + "Mở Dearly bấm “Đã nhận nhiệm vụ” để thôi nhắc.", ct);
 
         var saved = await LoadAsync(duty.Id, ct);
         return ToDto(saved!, me, clock.UtcNow);
     }
 
-    /// <summary>Sửa tên / mô tả / hạn (chỉ người giao).</summary>
+    /// <summary>Sửa tên / mô tả / giờ bắt đầu / nhắc trước / hạn (chỉ người giao).</summary>
     [HttpPut("{id:int}")]
     public async Task<ActionResult<DutyDto>> Update(int id, UpdateDutyRequest req, CancellationToken ct)
     {
@@ -132,19 +140,45 @@ public class DutiesController(
         var clean = (req.Title ?? string.Empty).Trim();
         if (clean.Length is 0 or > 120) return Problem(statusCode: 400, title: "Tên nhiệm vụ 1–120 ký tự");
 
-        var due = req.DueAtUtc.Kind == DateTimeKind.Utc ? req.DueAtUtc : req.DueAtUtc.ToUniversalTime();
-        if (due < clock.UtcNow.AddMinutes(-1))
-            return Problem(statusCode: 400, title: "Hạn báo cáo phải ở tương lai");
+        var start = ToUtc(req.StartsAtUtc);
+        var due = ToUtc(req.DueAtUtc);
+        if (due <= start)
+            return Problem(statusCode: 400, title: "Hạn báo cáo phải sau giờ bắt đầu");
 
         duty.Title = clean;
         duty.Note = (req.Note ?? string.Empty).Trim();
+        duty.StartsAtUtc = start;
+        duty.RemindBeforeMin = Math.Clamp(req.RemindBeforeMin ?? duty.RemindBeforeMin, 0, 240);
         duty.DueAtUtc = due;
+        duty.StartNotifiedAtUtc = null;
         duty.DueSoonNotifiedAtUtc = null;
         duty.OverdueNotifiedAtUtc = null;
         await db.SaveChangesAsync(ct);
 
         await NotifyAsync(duty.AssigneeId, "📋 Nhiệm vụ đã đổi",
-            $"“{clean}” vừa được cập nhật, hạn mới {LocalLabel(due)}.", ct);
+            $"“{clean}” vừa được cập nhật: bắt đầu {LocalLabel(start)}, hạn {LocalLabel(due)}.", ct);
+
+        return ToDto(duty, me, clock.UtcNow);
+    }
+
+    /// <summary>Người nhận bấm "đã nhận nhiệm vụ" — thôi kêu lặp.</summary>
+    [HttpPost("{id:int}/accept")]
+    public async Task<ActionResult<DutyDto>> Accept(int id, CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        var duty = await LoadAsync(id, ct);
+        if (duty is null) return NotFound();
+        if (duty.AssigneeId != me) return Forbid();
+
+        if (duty.AcceptedAtUtc is null)
+        {
+            duty.AcceptedAtUtc = clock.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            var meName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync(ct);
+            await NotifyAsync(duty.AssignerId, "✅ Đã nhận nhiệm vụ",
+                $"{meName} đã nhận “{duty.Title}”. Bạn sẽ được báo khi có báo cáo.", ct);
+        }
 
         return ToDto(duty, me, clock.UtcNow);
     }
@@ -182,6 +216,8 @@ public class DutiesController(
         var duty = await LoadAsync(id, ct);
         if (duty is null) return NotFound();
         if (duty.AssigneeId != me) return Forbid();
+        if (duty.AcceptedAtUtc is null)
+            return Problem(statusCode: 400, title: "Bấm “Đã nhận nhiệm vụ” trước khi báo cáo");
         if (duty.Status == DutyStatuses.Approved)
             return Problem(statusCode: 400, title: "Nhiệm vụ này đã được duyệt đạt");
 
@@ -307,6 +343,9 @@ public class DutiesController(
         return null;
     }
 
+    private static DateTime ToUtc(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
+
     private string LocalLabel(DateTime utc)
     {
         var local = utc + (clock.LocalNow - clock.UtcNow);
@@ -333,10 +372,12 @@ public class DutiesController(
         d.Id, d.AssignerId, d.AssigneeId,
         d.Assigner.FullName, d.Assigner.AvatarUrl,
         d.Assignee.FullName, d.Assignee.AvatarUrl,
-        d.Title, d.Note, d.DueAtUtc, d.Status, d.Attempt,
+        d.Title, d.Note, d.StartsAtUtc, d.RemindBeforeMin, d.DueAtUtc,
+        d.AcceptedAtUtc, d.Status, d.Attempt,
         d.CreatedAt, d.SubmittedAtUtc, d.ReviewedAtUtc, d.ReviewNote,
         d.AssignerId == me,
         d.Status != DutyStatuses.Approved && nowUtc > d.DueAtUtc,
+        d.AcceptedAtUtc is null && d.AssigneeId == me,
         d.Media
             .OrderBy(m => m.Attempt).ThenBy(m => m.Id)
             .Select(m => new DutyMediaDto(m.Id, m.Side, m.Kind, m.Text, m.Url, m.DurationMs, m.Attempt))

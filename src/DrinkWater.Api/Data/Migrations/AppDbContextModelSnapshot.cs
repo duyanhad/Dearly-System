@@ -148,6 +148,9 @@ namespace DrinkWater.Api.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("AcceptedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("AssigneeId")
                         .HasColumnType("uuid");
 
@@ -166,6 +169,9 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<DateTime?>("DueSoonNotifiedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastRungAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Note")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -174,10 +180,22 @@ namespace DrinkWater.Api.Data.Migrations
                     b.Property<DateTime?>("OverdueNotifiedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("RemindBeforeMin")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ReviewNote")
                         .HasColumnType("text");
 
                     b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RingCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StartNotifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("StartsAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")

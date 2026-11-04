@@ -12,8 +12,23 @@ public class Duty
     public string Title { get; set; } = string.Empty;
     /// <summary>Mô tả thêm của người giao (có thể rỗng).</summary>
     public string Note { get; set; } = string.Empty;
+
+    /// <summary>Giờ bắt đầu làm nhiệm vụ (UTC) — người giao đặt.</summary>
+    public DateTime StartsAtUtc { get; set; }
+
+    /// <summary>Nhắc trước giờ bắt đầu bao nhiêu phút (0 = không nhắc sớm).</summary>
+    public int RemindBeforeMin { get; set; }
     /// <summary>Hạn báo cáo (UTC).</summary>
     public DateTime DueAtUtc { get; set; }
+
+    /// <summary>
+    /// Người nhận bấm "đã nhận nhiệm vụ" lúc nào. Chưa nhận thì hệ thống kêu lặp cho tới khi nhận.
+    /// </summary>
+    public DateTime? AcceptedAtUtc { get; set; }
+    /// <summary>Lần kêu gần nhất (UTC) để giãn nhịp nhắc.</summary>
+    public DateTime? LastRungAtUtc { get; set; }
+    /// <summary>Số lần đã kêu "nhận nhiệm vụ" (chặn spam tối đa 60 lần).</summary>
+    public int RingCount { get; set; }
 
     /// <summary>open | submitted | approved | rejected.</summary>
     public string Status { get; set; } = DutyStatuses.Open;
@@ -27,7 +42,8 @@ public class Duty
     /// <summary>Lời nhắn khi duyệt chưa đạt.</summary>
     public string? ReviewNote { get; set; }
 
-    /// <summary>Đã nhắc "sắp tới hạn" / "quá hạn" chưa (mỗi mốc một lần).</summary>
+    /// <summary>Đã nhắc "sắp tới hạn" / "sắp tới giờ bắt đầu" / "quá hạn" chưa (mỗi mốc một lần).</summary>
+    public DateTime? StartNotifiedAtUtc { get; set; }
     public DateTime? DueSoonNotifiedAtUtc { get; set; }
     public DateTime? OverdueNotifiedAtUtc { get; set; }
 
