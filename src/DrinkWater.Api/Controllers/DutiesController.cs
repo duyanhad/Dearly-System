@@ -128,6 +128,100 @@ public class DutiesController(
         return ToDto(saved!, me, clock.UtcNow);
     }
 
+    /// <summary>
+    /// Giao nhiều nhiệm vụ trong một lần: mọi nhiệm vụ dùng chung giờ bắt đầu / nhắc trước / hạn,
+    /// nội dung kèm theo được tải lên một lần rồi gắn cho từng nhiệm vụ (không upload lặp).
+    /// </summary>
+    [HttpPost("batch")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 40 * 1024 * 1024)]
+    public async Task<ActionResult<List<DutyDto>>> CreateMany(
+        [FromForm] List<string> titles,
+        [FromForm] DateTime startsAtUtc,
+        [FromForm] DateTime dueAtUtc,
+        [FromForm] int? remindBeforeMin,
+        [FromForm] string? note,
+        [FromForm] string? text,
+        [FromForm] int? voiceDurationMs,
+        List<IFormFile>? files,
+        CancellationToken ct)
+    {
+        var me = User.GetUserId();
+        var partner = await PartnerOfAsync(me, ct);
+        if (partner is null)
+            return Problem(statusCode: 400, title: "Chưa có partner nên chưa giao được nhiệm vụ");
+
+        var cleanTitles = (titles ?? [])
+            .Select(t => (t ?? string.Empty).Trim())
+            .Where(t => t.Length > 0)
+            .ToList();
+        if (cleanTitles.Count == 0) return Problem(statusCode: 400, title: "Chưa nhập nhiệm vụ nào");
+        if (cleanTitles.Count > 10) return Problem(statusCode: 400, title: "Mỗi lần tối đa 10 nhiệm vụ");
+        if (cleanTitles.Any(t => t.Length > 120))
+            return Problem(statusCode: 400, title: "Tên nhiệm vụ 1–120 ký tự");
+
+        var start = ToUtc(startsAtUtc);
+        var due = ToUtc(dueAtUtc);
+        if (start < clock.UtcNow.AddMinutes(-1))
+            return Problem(statusCode: 400, title: "Giờ bắt đầu phải ở tương lai");
+        if (due <= start)
+            return Problem(statusCode: 400, title: "Hạn báo cáo phải sau giờ bắt đầu");
+
+        // Tải tệp lên một lần, dùng lại đường dẫn cho mọi nhiệm vụ trong lô.
+        var sharedMedia = new List<DutyMedia>();
+        var probe = new Duty();
+        var mediaError = await AttachAsync(probe, DutySides.Assign, text, voiceDurationMs, files, 0, ct);
+        if (mediaError is not null) return Problem(statusCode: 400, title: mediaError);
+        sharedMedia.AddRange(probe.Media);
+
+        var remind = Math.Clamp(remindBeforeMin ?? 10, 0, 240);
+        var cleanNote = (note ?? string.Empty).Trim();
+        var created = new List<Duty>();
+
+        foreach (var clean in cleanTitles)
+        {
+            var duty = new Duty
+            {
+                AssignerId = me,
+                AssigneeId = partner.Value.Id,
+                Title = clean,
+                Note = cleanNote,
+                StartsAtUtc = start,
+                RemindBeforeMin = remind,
+                DueAtUtc = due,
+            };
+            foreach (var m in sharedMedia)
+            {
+                duty.Media.Add(new DutyMedia
+                {
+                    Side = DutySides.Assign,
+                    Kind = m.Kind,
+                    Text = m.Text,
+                    Url = m.Url,
+                    DurationMs = m.DurationMs,
+                    Attempt = 0,
+                });
+            }
+            db.Duties.Add(duty);
+            created.Add(duty);
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        var meName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync(ct);
+        var names = string.Join(", ", cleanTitles.Select(t => $"“{t}”"));
+        await NotifyAsync(partner.Value.Id, $"📋 {cleanTitles.Count} nhiệm vụ mới",
+            $"{meName} giao cho bạn {cleanTitles.Count} nhiệm vụ: {names} — bắt đầu {LocalLabel(start)}, hạn {LocalLabel(due)}. "
+            + "Mở Dearly bấm “Đã nhận nhiệm vụ” để thôi nhắc.", ct);
+
+        var ids = created.Select(d => d.Id).ToList();
+        var saved = await db.Duties
+            .Include(d => d.Assigner).Include(d => d.Assignee).Include(d => d.Media)
+            .Where(d => ids.Contains(d.Id))
+            .ToListAsync(ct);
+        var nowUtc = clock.UtcNow;
+        return saved.OrderBy(d => d.Id).Select(d => ToDto(d, me, nowUtc)).ToList();
+    }
+
     /// <summary>Sửa tên / mô tả / giờ bắt đầu / nhắc trước / hạn (chỉ người giao).</summary>
     [HttpPut("{id:int}")]
     public async Task<ActionResult<DutyDto>> Update(int id, UpdateDutyRequest req, CancellationToken ct)
