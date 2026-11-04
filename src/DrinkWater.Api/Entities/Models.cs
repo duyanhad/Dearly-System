@@ -85,6 +85,8 @@ public class Notification
     public string Title { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
     public string? ImageUrl { get; set; }
+    /// <summary>Video ngắn gửi kèm khi nhắc nhở (chỉ thông báo loại Nudge mới có).</summary>
+    public string? VideoUrl { get; set; }
     public string Type { get; set; } = NotificationTypes.Broadcast;
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

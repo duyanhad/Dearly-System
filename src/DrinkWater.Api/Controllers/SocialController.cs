@@ -700,12 +700,25 @@ public class SocialController(
         var custom = (req?.Message ?? string.Empty).Trim();
         if (custom.Length > 200) custom = custom[..200];
 
+        // Gửi kèm video (tuỳ chọn): chọn ngẫu nhiên 1 video đang bật của đúng nhu cầu.
+        string? videoUrl = null;
+        if (req?.SendVideo == true)
+        {
+            var kind = (req.Kind ?? "water").Trim().ToLowerInvariant();
+            var candidates = await db.NudgeVideos
+                .Where(v => v.IsActive && v.Kind == kind)
+                .Select(v => v.Url)
+                .ToListAsync();
+            if (candidates.Count > 0) videoUrl = candidates[Random.Shared.Next(candidates.Count)];
+        }
+
         var notification = new Notification
         {
             SenderId = me,
             ReceiverId = userId,
             Title = title,
             Message = custom.Length > 0 ? $"{sender}: {custom}" : $"{sender} {action}",
+            VideoUrl = videoUrl,
             Type = NotificationTypes.Nudge
         };
         db.Notifications.Add(notification);
@@ -716,6 +729,7 @@ public class SocialController(
             notification.Id,
             Title = notification.Title,
             notification.Message,
+            notification.VideoUrl,
             notification.CreatedAt
         };
 

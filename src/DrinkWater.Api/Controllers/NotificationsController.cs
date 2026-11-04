@@ -34,7 +34,7 @@ public class NotificationsController(
             .OrderByDescending(n => n.Id)
             .Take(limit)
             .Select(n => new NotificationDto(
-                n.Id, n.SenderId, n.Title, n.Message, n.ImageUrl, n.Type, n.IsRead, n.CreatedAt, n.ReplyRound))
+                n.Id, n.SenderId, n.Title, n.Message, n.ImageUrl, n.Type, n.IsRead, n.CreatedAt, n.ReplyRound, n.VideoUrl))
             .ToListAsync();
     }
 
@@ -107,6 +107,6 @@ public class NotificationsController(
         }
 
         return new NotificationDto(row.Id, row.SenderId, row.Title, row.Message, row.ImageUrl,
-            row.Type, row.IsRead, row.CreatedAt, row.ReplyRound);
+            row.Type, row.IsRead, row.CreatedAt, row.ReplyRound, row.VideoUrl);
     }
 }

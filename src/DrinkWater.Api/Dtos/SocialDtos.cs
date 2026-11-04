@@ -18,12 +18,14 @@ public record FeedItemDto(
 
 public record NudgeResultDto(bool DeliveredRealtime, bool DeliveredPush);
 
-/// <summary>Loại nhắc (water/meal/medicine/study/sleep/weight) + lời nhắn tự soạn.</summary>
-public record NudgeRequest(string? Kind, string? Message);
+/// <summary>Loại nhắc (water/meal/medicine/study/sleep/weight) + lời nhắn tự soạn + có gửi kèm video hay không.</summary>
+public record NudgeRequest(string? Kind, string? Message, bool SendVideo = false);
+
+public record NudgeVideoDto(int Id, string Kind, string Url, string? Label, bool IsActive, DateTime CreatedAt);
 
 public record NotificationDto(
     int Id, Guid? SenderId, string Title, string Message, string? ImageUrl,
-    string Type, bool IsRead, DateTime CreatedAt, int ReplyRound = 0);
+    string Type, bool IsRead, DateTime CreatedAt, int ReplyRound = 0, string? VideoUrl = null);
 
 public record BroadcastRequest(
     [Required, MaxLength(100)] string Title,

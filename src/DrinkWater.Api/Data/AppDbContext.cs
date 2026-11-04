@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<VoiceNote> VoiceNotes => Set<VoiceNote>();
     public DbSet<Duty> Duties => Set<Duty>();
+    public DbSet<NudgeVideo> NudgeVideos => Set<NudgeVideo>();
     public DbSet<DutyMedia> DutyMedia => Set<DutyMedia>();
     public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
     public DbSet<Era> Eras => Set<Era>();

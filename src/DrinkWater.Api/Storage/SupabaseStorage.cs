@@ -55,6 +55,8 @@ public sealed class SupabaseStorage(
         ".jpg" or ".jpeg" => "image/jpeg",
         ".webp" => "image/webp",
         ".gif" => "image/gif",
+        ".mp4" => "video/mp4",
+        ".webm" => "video/webm",
         _ => "application/octet-stream"
     };
 }
