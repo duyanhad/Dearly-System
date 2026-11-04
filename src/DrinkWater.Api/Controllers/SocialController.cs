@@ -428,6 +428,18 @@ public class SocialController(
                 .ToList());
     }
 
+    /// <summary>Chi tiết một ngày của người khác — chỉ partner (giống phần chi tiết ngày ở trang Lịch).</summary>
+    [HttpGet("users/{userId:guid}/day/{date}")]
+    public async Task<ActionResult<DayDto>> UserDay(Guid userId, DateOnly date)
+    {
+        var me = User.GetUserId();
+        var isPartner = await db.Users.AnyAsync(u => u.Id == userId && u.PartnerId == me)
+                        || await db.Users.AnyAsync(u => u.Id == me && u.PartnerId == userId);
+        if (!isPartner)
+            return Problem(statusCode: 403, title: "Chỉ partner mới xem được chi tiết ngày");
+        return await water.GetDayAsync(userId, date);
+    }
+
     /// <summary>Tiến độ hôm nay của một người mình duyệt ảnh (dùng cho trang partner).</summary>
     [HttpGet("partner/clients/{userId:guid}/today")]
     public async Task<ActionResult<TodayDto>> ClientToday(Guid userId)
