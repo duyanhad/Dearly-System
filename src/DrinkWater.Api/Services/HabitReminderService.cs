@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using DrinkWater.Api.Data;
+using DrinkWater.Api.Entities;
 using DrinkWater.Api.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -74,13 +75,20 @@ public sealed class HabitReminderService(
         if (rows.Count == 0) return;
 
         var userIds = rows.Select(r => r.UserId).Distinct().ToList();
-        var doneToday = await db.HabitLogs
+        var doneLogs = await db.HabitLogs
             .AsNoTracking()
             .Where(l => userIds.Contains(l.UserId) && l.Date == today && l.Status != "rejected")
-            .GroupBy(l => new { l.UserId, l.Kind })
-            .Select(g => new { g.Key.UserId, g.Key.Kind, Count = g.Count() })
+            .Select(l => new { l.UserId, l.Kind, l.MealSlot })
             .ToListAsync(token);
-        var doneMap = doneToday.ToDictionary(x => (x.UserId, x.Kind), x => x.Count);
+        // Bữa ăn / thuốc: chỉ ca chính mới tính là đã làm (bữa phụ, ăn vặt không làm tắt nhắc).
+        var doneMap = doneLogs
+            .Where(l => HabitProgress.CountsForGoal(l.Kind, l.MealSlot))
+            .GroupBy(l => (l.UserId, l.Kind))
+            .ToDictionary(
+                g => g.Key,
+                g => g.Key.Kind is "meal" or "medicine"
+                    ? g.Select(x => x.MealSlot).Distinct().Count()
+                    : g.Count());
 
         foreach (var row in rows)
         {
