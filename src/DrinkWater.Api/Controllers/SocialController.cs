@@ -226,6 +226,15 @@ public class SocialController(
         var requester = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PendingPartnerId == me);
         if (requester is null) return NotFound();
 
+        // Người xin đã có partner duyệt khác (do lời mời cũ còn treo) → không nhận, huỷ lời mời treo.
+        if (requester.PartnerId is { } existing && existing != me)
+        {
+            requester.PendingPartnerId = null;
+            await db.SaveChangesAsync();
+            return Problem(statusCode: 400,
+                title: "Người này đã có partner duyệt khác, cần huỷ liên kết cũ trước.");
+        }
+
         requester.PendingPartnerId = null;
         requester.PartnerId = me;
 

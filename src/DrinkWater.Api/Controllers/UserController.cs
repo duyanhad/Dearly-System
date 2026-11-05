@@ -211,6 +211,17 @@ public class UserController(
 
             if (user.PartnerId != partnerId)
             {
+                // Đang có partner duyệt rồi thì không mời thêm: phải huỷ liên kết cũ trước.
+                if (user.PartnerId is { } currentPartner && currentPartner != partnerId)
+                {
+                    var currentName = await db.Users
+                        .Where(u => u.Id == currentPartner)
+                        .Select(u => u.FullName)
+                        .FirstOrDefaultAsync() ?? "partner hiện tại";
+                    return Problem(statusCode: 400,
+                        title: $"Bạn đang có partner duyệt là {currentName}. Huỷ liên kết với người đó trước khi mời người duyệt mới.");
+                }
+
                 var myName = await db.Users.Where(u => u.Id == me).Select(u => u.FullName).FirstAsync();
                 db.Notifications.Add(new Notification
                 {
