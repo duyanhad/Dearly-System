@@ -34,3 +34,38 @@ public class HabitLog
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Cách tính "đã làm được bao nhiêu" của từng nhu cầu — dùng chung cho màn Hôm nay, trang partner,
+/// chuỗi thành tích, lịch và phần thưởng để mọi nơi ra cùng một con số.
+/// Bữa ăn / uống thuốc chỉ tính **ca chính** và mỗi ca tối đa 1 lần;
+/// bữa phụ, ăn vặt, ca lạ hoặc lần ghi không chọn đúng ca thì chỉ ghi nhận, không cộng %.
+/// </summary>
+public static class HabitProgress
+{
+    /// <summary>Ba bữa chính được tính %.</summary>
+    public static readonly string[] MealSlots = ["breakfast", "lunch", "dinner"];
+
+    /// <summary>Ba ca uống thuốc được tính %.</summary>
+    public static readonly string[] MedicineSlots = ["morning", "noon", "night"];
+
+    /// <summary>Slot có được tính vào chỉ tiêu không (null = người dùng không chọn đúng ca → không tính).</summary>
+    public static bool CountsForGoal(string kind, string? slot) => kind switch
+    {
+        "meal" => slot is not null && MealSlots.Contains(slot),
+        "medicine" => slot is not null && MedicineSlots.Contains(slot),
+        _ => true,
+    };
+
+    /// <summary>Số mục đã duyệt được cộng vào chỉ tiêu của một nhu cầu.</summary>
+    public static int Done(string kind, IEnumerable<(string? Slot, string Status)> logs)
+    {
+        var approved = logs.Where(l => l.Status == "approved").ToList();
+        return kind switch
+        {
+            "meal" => MealSlots.Count(slot => approved.Any(l => l.Slot == slot)),
+            "medicine" => MedicineSlots.Count(slot => approved.Any(l => l.Slot == slot)),
+            _ => approved.Count,
+        };
+    }
+}

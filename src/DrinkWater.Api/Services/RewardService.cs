@@ -82,7 +82,11 @@ public sealed class RewardService(AppDbContext db)
         }
 
         var need = target > 0 ? target : kind switch { "study" => 2, _ => 3 };
-        var done = await db.HabitLogs.CountAsync(l => l.UserId == userId && l.Kind == kind && l.Date == day && l.Status == "approved");
+        var logs = await db.HabitLogs.AsNoTracking()
+            .Where(l => l.UserId == userId && l.Kind == kind && l.Date == day)
+            .Select(l => new { l.MealSlot, l.Status })
+            .ToListAsync();
+        var done = HabitProgress.Done(kind, logs.Select(l => (l.MealSlot, l.Status)));
         return done >= need;
     }
 

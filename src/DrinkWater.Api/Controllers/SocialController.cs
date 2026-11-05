@@ -324,7 +324,7 @@ public class SocialController(
             .ToListAsync();
         var habitLogs = await db.HabitLogs.AsNoTracking()
             .Where(l => l.UserId == userId && l.Date >= streakFrom && l.Date <= today && l.Status != "rejected")
-            .Select(l => new { l.Date, l.Kind, l.Value })
+            .Select(l => new { l.Date, l.Kind, l.Value, l.MealSlot, l.Status })
             .ToListAsync();
 
         var waterDone = summaries.Where(s => s.IsCompleted).Select(s => s.Date).ToHashSet();
@@ -345,7 +345,7 @@ public class SocialController(
             habitDone[kind] = habitLogs
                 .Where(l => l.Kind == kind)
                 .GroupBy(l => l.Date)
-                .Where(g => g.Count() >= habitGoal[kind])
+                .Where(g => HabitProgress.Done(kind, g.Select(x => (x.MealSlot, x.Status))) >= habitGoal[kind])
                 .Select(g => g.Key)
                 .ToHashSet();
         }
@@ -382,7 +382,7 @@ public class SocialController(
             .ToListAsync();
         var monthHabits = await db.HabitLogs.AsNoTracking()
             .Where(l => l.UserId == userId && l.Date >= first && l.Date <= last && l.Status != "rejected")
-            .Select(l => new { l.Date, l.Kind, l.Value })
+            .Select(l => new { l.Date, l.Kind, l.Value, l.MealSlot })
             .ToListAsync();
 
         var days = new Dictionary<DateOnly, (List<string> Kinds, Dictionary<string, string> Detail)>();
@@ -409,13 +409,19 @@ public class SocialController(
             kinds.Add("sleep");
             detail["sleep"] = $"{minutes / 60}h{minutes % 60:00}";
         }
-        foreach (var g in monthHabits.GroupBy(l => new { l.Date, l.Kind }))
+        foreach (var g in monthHabits
+            .Where(l => HabitProgress.CountsForGoal(l.Kind, l.MealSlot))
+            .GroupBy(l => new { l.Date, l.Kind }))
         {
             var (kinds, detail) = Row(g.Key.Date);
             kinds.Add(g.Key.Kind);
-            detail[g.Key.Kind] = g.Key.Kind == "weight"
-                ? $"{(g.OrderBy(x => x.Value).Last().Value ?? 0) / 1000.0:0.0} kg"
-                : $"{g.Count()} lần";
+            detail[g.Key.Kind] = g.Key.Kind switch
+            {
+                "weight" => $"{(g.OrderBy(x => x.Value).Last().Value ?? 0) / 1000.0:0.0} kg",
+                // Bữa ăn / thuốc: đếm số ca chính (bữa phụ, ăn vặt đã bị lọc ở trên).
+                "meal" or "medicine" => $"{g.Select(x => x.MealSlot).Distinct().Count()} lần",
+                _ => $"{g.Count()} lần",
+            };
         }
 
         return new FriendOverviewDto(
@@ -483,7 +489,9 @@ public class SocialController(
             if (settingRow is { Enabled: false }) continue;
             var target = settingRow?.TargetValue ?? 0;
             if (target <= 0) target = kind == "study" ? 2 : 3;
-            var done = logs.Count(l => l.Kind == kind && l.Status == "approved");
+            // Bữa ăn / thuốc chỉ đếm ca chính đã duyệt (bữa phụ, ăn vặt không cộng).
+            var kindLogs = logs.Where(l => l.Kind == kind).Select(l => (l.MealSlot, l.Status)).ToList();
+            var done = HabitProgress.Done(kind, kindLogs);
             needs.Add(new(kind, target, done, PercentOf(done, target), 0,
                 logs.Count(l => l.Kind == kind && l.Status == "pending"),
                 settingRow?.ImageUrl, settingRow?.CutoutUrl));

@@ -68,23 +68,17 @@ public class HabitLogsController(
         if (target <= 0) target = kind switch { "medicine" => 3, "meal" => 3, "study" => 2, "weight" => 60000, _ => 3 };
 
         // Chỉ phiếu đã duyệt mới được cộng vào chỉ tiêu (phiếu chờ duyệt hiện riêng).
-        // Bữa ăn: chỉ 3 bữa chính (sáng/trưa/tối) được tính, mỗi bữa tối đa 1 lần/ngày;
-        // bữa phụ / ăn vặt vẫn ghi nhận nhưng không cộng %.
-        var done = kind switch
-        {
-            "meal" => MealSlots.Count(slot => logs.Any(l => l.MealSlot == slot && l.Status == "approved")),
-            // Thuốc giống bữa ăn: 3 ca sáng/trưa/tối, mỗi ca duyệt xong cộng 1/3.
-            "medicine" => MedicineSlots.Count(slot => logs.Any(l => l.MealSlot == slot && l.Status == "approved")),
-            _ => logs.Count(l => l.Status == "approved"),
-        };
+        // Bữa ăn / thuốc: chỉ ca chính (sáng/trưa/tối), mỗi ca tối đa 1 lần, và phải chọn đúng ca.
+        // Bữa phụ / ăn vặt / lần ghi không chọn ca → chỉ ghi nhận, không cộng %.
+        var done = HabitProgress.Done(kind, logs.Select(l => (l.MealSlot, l.Status)));
         return new HabitDayDto(kind, target, done, logs.Select(ToDto).ToList());
     }
 
     /// <summary>Ba bữa chính được tính % (bữa phụ/ăn vặt chỉ là ghi nhận).</summary>
-    private static readonly string[] MealSlots = ["breakfast", "lunch", "dinner"];
+    private static readonly string[] MealSlots = HabitProgress.MealSlots;
 
     /// <summary>Ba ca uống thuốc được tính % (sáng / trưa / tối).</summary>
-    private static readonly string[] MedicineSlots = ["morning", "noon", "night"];
+    private static readonly string[] MedicineSlots = HabitProgress.MedicineSlots;
 
     /// <summary>Ghi một lần (multipart: time, note, photo?, value?) — value chỉ dùng cho cân nặng (gam).</summary>
     [HttpPost("{kind}/logs")]
@@ -265,11 +259,14 @@ public class HabitLogsController(
         l.CreatedAt,
         l.ReviewedAt);
 
-    /// <summary>Chuẩn hoá loại bữa; giá trị lạ thì coi là bữa chính theo giờ (mặc định "lunch").</summary>
-    private static string NormalizeMealSlot(string? slot) => slot?.Trim().ToLowerInvariant() switch
+    /// <summary>
+    /// Chuẩn hoá loại bữa: chỉ nhận đúng 5 giá trị; giá trị lạ hoặc bỏ trống thì để null
+    /// (không chọn đúng ca → lần ghi chỉ được lưu, không cộng %).
+    /// </summary>
+    private static string? NormalizeMealSlot(string? slot) => slot?.Trim().ToLowerInvariant() switch
     {
         "breakfast" or "lunch" or "dinner" or "snack" or "extra" => slot!.Trim().ToLowerInvariant(),
-        _ => "lunch"
+        _ => null
     };
 
     private static string NormalizeMedicineSlot(string? slot) => slot?.Trim().ToLowerInvariant() switch
